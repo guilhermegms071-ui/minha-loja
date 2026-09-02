@@ -1,0 +1,16 @@
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.7
+Flask-Login==0.6.3
+psycopg2-binary==2.9.9
+requests==2.32.3
+python-dotenv==1.0.1
+gunicorn==22.0.0
+APScheduler==3.10.4
+Flask-Cors==4.0.1
+Flask-Limiter==3.8.0
+# SDK oficial da Anthropic (IA opcional na conversa do WhatsApp — ver AI_ENABLED
+# no .env). Sem pin de patch exato de propósito: não temos como confirmar aqui
+# qual é a última versão publicada agora; rode `pip install -U anthropic` e,
+# se quiser build reprodutível, congele a versão resolvida com ==.
+anthropic>=1.0.0

@@ -1,0 +1,121 @@
+version: "3.8"
+
+services:
+  # ── Banco de dados principal (app web) ─────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: whatsapp_bling
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  # ── Sua aplicação (catálogo + carrinho + webhook + Bling) ──
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+
+  # ── Evolution API: gateway de mensagens / webhooks ─────────
+  evolution-api:
+    image: atendai/evolution-api:latest
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_CONNECTION_URI: postgresql://postgres:postgres@db:5432/evolution
+      WEBHOOK_GLOBAL_URL: http://web:5000/webhook/evolution
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      CONFIG_SESSION_PHONE_CLIENT: "JSV CELL"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+  # ── Typebot: fluxo/menu estático ───────────────────────────
+  typebot-builder:
+    image: baptistearno/typebot-builder:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/typebot
+      NEXTAUTH_URL: http://localhost:3001
+      NEXT_PUBLIC_VIEWER_URL: http://localhost:3002
+      ENCRYPTION_SECRET: troque-isso-por-32-caracteres-aleatorios
+    ports:
+      - "3001:3000"
+    depends_on:
+      - db
+
+  typebot-viewer:
+    image: baptistearno/typebot-viewer:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/typebot
+      NEXTAUTH_URL: http://localhost:3001
+      NEXT_PUBLIC_VIEWER_URL: http://localhost:3002
+      ENCRYPTION_SECRET: troque-isso-por-32-caracteres-aleatorios
+    ports:
+      - "3002:3000"
+    depends_on:
+      - db
+
+  # ── Chatwoot: fila + atendimento humano ────────────────────
+  # ATENÇÃO — revisão estática contra a doc oficial (docker-compose.production.yaml
+  # do próprio chatwoot/chatwoot), NÃO validada rodando de verdade neste ambiente
+  # (sem Docker disponível aqui). Antes do primeiro uso real, rode uma vez:
+  #   docker compose run --rm chatwoot bundle exec rails db:chatwoot_prepare
+  # (cria o schema do banco chatwoot e o usuário admin inicial) — sem isso o
+  # serviço sobe mas o painel não funciona.
+  chatwoot: &chatwoot_base
+    image: chatwoot/chatwoot:latest
+    restart: unless-stopped
+    environment:
+      SECRET_KEY_BASE: troque-isso-por-um-valor-aleatorio-seguro
+      FRONTEND_URL: http://localhost:3000
+      POSTGRES_HOST: db
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DATABASE: chatwoot
+      REDIS_URL: redis://redis:6379
+      RAILS_ENV: production
+      # As duas linhas abaixo faltavam — presentes na config oficial de
+      # produção do Chatwoot, afetam bootstrap/compilação de assets.
+      NODE_ENV: production
+      INSTALLATION_ENV: docker
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - redis
+
+  # Faltava inteiramente — SEM esse serviço, os webhooks do Chatwoot (o
+  # "message_created" que a integração de atendimento humano depende) NUNCA
+  # disparam de verdade: no Chatwoot, entrega de webhook roda em job de
+  # background via Sidekiq, não no processo web (o serviço "chatwoot" acima).
+  # Mesma imagem, mesmas variáveis de ambiente do web (por isso o &chatwoot_base
+  # + <<: *chatwoot_base), só troca o comando pra rodar o worker em vez do servidor.
+  chatwoot-sidekiq:
+    <<: *chatwoot_base
+    ports: []
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+
+volumes:
+  db_data:
+  redis_data:
