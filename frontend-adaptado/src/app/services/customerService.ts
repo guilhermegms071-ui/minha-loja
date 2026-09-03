@@ -10,6 +10,7 @@ export function emptyCustomer(): Customer {
     name: "", whatsapp: "", cpfCnpj: "",
     cep: "", address: "", number: "",
     complement: "", neighborhood: "", city: "", state: "",
+    paymentMethod: "pix", // opção mais comum como padrão — não bloqueia envio
   };
 }
 

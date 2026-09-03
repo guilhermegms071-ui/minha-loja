@@ -100,6 +100,9 @@ def criar():
     total = subtotal - valor_desconto + frete
 
     # 3. Cria o pedido local — SEMPRE, independente do Bling responder ou não
+    #    forma_pagamento e endereco_entrega são só informativos (não entram
+    #    na criação do pedido na Bling nem em nenhuma outra lógica) — por
+    #    isso lidos direto do payload sem validação, com "" -> None.
     pedido = Pedido(
         numero=_gerar_numero_pedido(),
         cliente_id=cliente.id,
@@ -107,6 +110,8 @@ def criar():
         subtotal=subtotal,
         frete=frete,
         total=total,
+        forma_pagamento=(payload.get("formaPagamento") or None),
+        endereco_entrega=(cliente_payload.get("endereco") or None),
     )
     db.session.add(pedido)
     db.session.flush()
@@ -299,21 +304,44 @@ def _gerar_numero_pedido() -> str:
 def _gerar_link_pagamento(pedido: Pedido) -> str | None:
     """Link wa.me pro funcionário que finaliza o pagamento, já com o resumo
     do pedido pré-preenchido — fecha o fluxo real da loja: bot cuida do
-    catálogo, humano só entra pra combinar a forma de pagamento."""
+    catálogo, humano só entra pra combinar a forma de pagamento.
+
+    Formato EXATO pedido (emoji, negrito com asterisco — sintaxe de
+    formatação do próprio WhatsApp — e as linhas fixas de abertura/
+    fechamento) — não é gerado a partir de config nenhuma, é fixo aqui de
+    propósito, igual ao que já era antes desta tarefa."""
     telefone_atendente = config_service.obter_telefone_atendente()
     if not telefone_atendente:
         return None
 
     linhas_itens = "\n".join(
-        f"• {item.quantidade}x {item.produto.nome} — R$ {item.preco_unitario:.2f}"
+        f"- {item.produto.nome} x{item.quantidade} — R$ {item.preco_unitario:.2f}"
         for item in pedido.itens
     )
+    # Campos que podem estar ausentes (pedido antigo sem essas colunas
+    # preenchidas, ou lojista sem endereço configurado) nunca viram
+    # "None"/"undefined" na mensagem — sempre um texto explícito.
+    endereco = pedido.endereco_entrega or "Não informado"
+    forma_pagamento = pedido.forma_pagamento or "Não informado"
+
     texto = (
-        f"Olá! Gostaria de finalizar o pagamento do pedido {pedido.numero}.\n\n"
+        f"🧾 *Novo pedido — JSV CELL*\n"
+        f"Pedido {pedido.numero}\n\n"
+        f"Olá! Chegou um pedido novo pelo catálogo online. Segue o resumo:\n\n"
+        f"📦 *Itens do pedido*\n"
         f"{linhas_itens}\n\n"
-        f"Subtotal: R$ {pedido.subtotal:.2f}\n"
-        f"Frete: R$ {pedido.frete:.2f}\n"
-        f"Total: R$ {pedido.total:.2f}"
+        f"💰 Subtotal: R$ {pedido.subtotal:.2f}\n"
+        f"🚚 Frete: R$ {pedido.frete:.2f}\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"✅ *Total: R$ {pedido.total:.2f}*\n\n"
+        f"👤 *Dados do cliente*\n"
+        f"{pedido.cliente.nome}\n"
+        f"📱 {pedido.cliente.telefone}\n"
+        f"📍 {endereco}\n\n"
+        f"💳 *Forma de pagamento:* {forma_pagamento}\n\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"Para confirmar, envie o comprovante de pagamento por aqui.\n"
+        f"Assim que recebido, o pedido segue para separação! 🚀"
     )
     return f"https://wa.me/{telefone_atendente}?text={quote(texto)}"
 
@@ -328,6 +356,8 @@ def _serialize(pedido: Pedido) -> dict:
         "frete": float(pedido.frete),
         "total": float(pedido.total),
         "blingPedidoId": pedido.bling_pedido_id,
+        "formaPagamento": pedido.forma_pagamento,  # None em pedidos antigos — front trata como opcional
+        "enderecoEntrega": pedido.endereco_entrega,
         "criadoEm": pedido.criado_em.isoformat(),
         "cliente": {
             "nome": pedido.cliente.nome,

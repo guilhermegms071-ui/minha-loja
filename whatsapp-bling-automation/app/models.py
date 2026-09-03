@@ -58,6 +58,19 @@ class Pedido(db.Model):
     total = db.Column(db.Numeric(10, 2), nullable=False)
     bling_pedido_id = db.Column(db.String(64))
     erro_bling = db.Column(db.Text)  # guarda o motivo se a criação no Bling falhar
+    # Opcional de propósito — só informativo (não afeta criação no Bling,
+    # marcar como pago, nem baixa de estoque; a confirmação de pagamento em
+    # si continua sempre manual, combinada por WhatsApp). Pedidos antigos
+    # (de antes desse campo existir) ficam com None aqui — sempre tratado
+    # como "não informado" na exibição, nunca como erro.
+    forma_pagamento = db.Column(db.String(30), nullable=True)
+    # Endereço de entrega formatado numa linha só — coletado no checkout
+    # mas que, até esta tarefa, era só exibido no formulário e nunca
+    # chegava a ser salvo; precisou ser adicionado agora porque a mensagem
+    # de resumo pro atendente (ver cart/routes.py) exige a linha "📍
+    # {endereço}". Mesma regra do campo acima: opcional, pedidos antigos
+    # ficam com None.
+    endereco_entrega = db.Column(db.String(500), nullable=True)
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
 
     cliente = db.relationship("Cliente", backref="pedidos")

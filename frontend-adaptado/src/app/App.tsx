@@ -11,10 +11,11 @@ import {
   Wrench, Box, ClipboardList, Settings, AlertCircle,
   CheckCircle2, Eye, EyeOff, ExternalLink, Info,
   MapPin, Phone, FileText, ChevronDown, RefreshCw,
-  MessageCircle, Clock, TrendingUp, BarChart2,
+  MessageCircle, Clock, TrendingUp, BarChart2, Wallet,
 } from "lucide-react";
 
-import type { Product, CartItem, Customer, Order, Category } from "./types";
+import type { Product, CartItem, Customer, Order, Category, PaymentMethod } from "./types";
+import { PAYMENT_METHOD_LABELS } from "./types";
 import { computeCategories, CAT_COLOR, FRETE } from "./data";
 import { CONFIG, updateConfig } from "./config";
 import { api, ApiError } from "./services/apiService";
@@ -121,20 +122,16 @@ function useCart() {
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
+// Logo real da marca (arquivo em public/assets/ — ver instruções de troca
+// no relatório desta tarefa). "compact" é usado só no topo da gaveta de
+// categorias no mobile (espaço menor); no cabeçalho normal usa o tamanho
+// cheio. Vinda de public/, funciona igual em qualquer rota (não passa pelo
+// bundler, é servida como arquivo estático — cai em /assets/logo.svg tanto
+// em dev quanto no build de produção).
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-2 select-none">
-      <div className="w-10 h-10 bg-black rounded-md flex flex-col items-center justify-center shrink-0">
-        <span className="text-white font-black leading-none tracking-widest" style={{ fontSize: "0.6rem" }}>JSV</span>
-        <span className="text-green-400 font-black leading-none tracking-widest" style={{ fontSize: "0.5rem" }}>CELL</span>
-      </div>
-      {!compact && (
-        <span className="hidden sm:block font-black text-xl tracking-tight">
-          <span className="text-white">JSV</span>
-          <span className="text-green-400">CELL</span>
-        </span>
-      )}
-    </div>
+    <img src="/assets/logo.png" alt="JSV CELL" draggable={false}
+      className={`select-none ${compact ? "h-8" : "h-9 sm:h-10"} w-auto`} />
   );
 }
 
@@ -170,37 +167,42 @@ function Header({ cartCount, onMenuClick, search, setSearch, setActiveCategory }
   };
 
   return (
-    <header className="bg-[#0f1e0f] text-white sticky top-0 z-50 shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-        <button className="md:hidden text-white/50 hover:text-white mr-1 transition-colors" onClick={onMenuClick}>
-          <Menu size={22} />
-        </button>
+    <header className="bg-brand text-white sticky top-0 z-50 shadow-lg">
+      {/* grid de 3 colunas (não flex) — só assim a coluna do meio (a logo)
+          fica de verdade centralizada no header inteiro, não "puxada" pro
+          lado que tiver menos conteúdo do outro (o que aconteceria com
+          flex + margin-auto quando as colunas laterais têm larguras
+          diferentes, como aqui: busca de um lado, ícones do outro). */}
+      <div className="max-w-7xl mx-auto px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button className="md:hidden text-white/50 hover:text-white transition-colors" onClick={onMenuClick}>
+            <Menu size={22} />
+          </button>
 
-        <Logo />
-
-        {/* Escondida em mobile (abaixo de md=768px) — a página de catálogo
-            já tem seu próprio campo de busca dedicado e funcional (ver
-            CatalogView), então esconder aqui não reduz a descoberta da
-            função; só evita duplicar espaço no cabeçalho apertado do
-            celular. Continua igual em telas ≥768px. Valor/onChange
-            conectados ao mesmo estado de busca do catálogo (ver
-            PublicContext) — antes esse input não tinha value/onChange
-            nenhum, era puramente decorativo. */}
-        <div className="hidden md:block flex-1 max-w-lg mx-2 sm:mx-4">
-          <div className="flex items-center bg-white rounded-lg overflow-hidden shadow-inner">
-            <input type="text" placeholder="Buscar produtos..."
-              value={search} onChange={e => handleSearchChange(e.target.value)}
-              className="flex-1 px-3 py-2 text-gray-800 text-sm outline-none bg-transparent" />
-            <button className="px-3 py-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
-              <Search size={17} />
-            </button>
+          {/* Busca — escondida em mobile (abaixo de md=768px) — a página de
+              catálogo já tem seu próprio campo de busca dedicado e
+              funcional (ver CatalogView), então esconder aqui não reduz a
+              descoberta da função; só evita apertar o cabeçalho no
+              celular, que já divide espaço com o botão de menu e a logo
+              centralizada. Continua igual em telas ≥768px. */}
+          <div className="hidden md:block w-full max-w-xs">
+            <div className="flex items-center bg-white rounded-lg overflow-hidden shadow-inner">
+              <input type="text" placeholder="Buscar produtos..."
+                value={search} onChange={e => handleSearchChange(e.target.value)}
+                className="flex-1 min-w-0 px-3 py-2 text-gray-800 text-sm outline-none bg-transparent" />
+              <button className="px-3 py-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
+                <Search size={17} />
+              </button>
+            </div>
           </div>
         </div>
+
+        <Logo />
 
         {/* Sem ícone/link de admin aqui de propósito — o painel interno
             (/painel-interno) não é acessível por nenhum botão do catálogo
             público, só por quem já conhece a URL direta. */}
-        <div className="flex items-center gap-0.5 ml-auto shrink-0">
+        <div className="flex items-center justify-end gap-0.5 min-w-0">
           <button onClick={handleCategoriasClick}
             className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/5">
             <LayoutGrid size={15} /><span>Categorias</span>
@@ -257,7 +259,7 @@ function CategorySidebar({ categories, active, onChange, mobileOpen, onClose }: 
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={onClose} />
           <div className="relative z-10 w-64 bg-white h-full shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 bg-[#0f1e0f]">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 bg-brand">
               <Logo compact />
               <button onClick={onClose} className="text-white/60 hover:text-white"><X size={20} /></button>
             </div>
@@ -347,7 +349,7 @@ function ProductCard({ product, onAdd, inCart }: {
           className={`mt-auto min-h-11 md:min-h-0 flex items-center justify-center text-sm font-bold py-2 rounded-lg transition-colors ${
             !product.inStock
               ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white"
+              : "bg-brand hover:bg-brand-dark active:bg-brand-dark text-white"
           }`}>
           Adicionar
         </button>
@@ -401,102 +403,113 @@ function CatalogView({ cart, onAdd, activeCategory, setActiveCategory, mobileMen
   const categoryLabel = categories.find(c => c.id === activeCategory)?.label ?? "Produtos";
 
   return (
-    <div className="flex gap-5">
-      <CategorySidebar categories={categories} active={activeCategory} onChange={setActiveCategory}
-        mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
-
-      <div className="flex-1 min-w-0">
-        {/* Mobile search */}
-        <div className="md:hidden flex items-center bg-white rounded-lg border border-gray-200 mb-3 overflow-hidden">
-          {/* text-base (16px) — abaixo disso o Safari no iOS dá zoom
-              automático ao focar o campo; esse input só existe em mobile
-              (bloco md:hidden acima), então não precisa de reset pro desktop. */}
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar produtos..."
-            className="flex-1 px-3 py-2 text-base text-gray-800 outline-none" />
-          <Search size={16} className="mr-3 text-gray-400 shrink-0" />
-        </div>
-
-        {/* Mobile pills */}
-        <div className="md:hidden flex gap-2 overflow-x-auto pb-2 mb-3">
+    <>
+      {/* Faixa de categorias — só mobile (desktop mantém a sidebar vertical
+          branca abaixo, já testada, sem mudança). Barra nova, larga a tela
+          inteira e encostada no cabeçalho: w-screen + left-1/2
+          -translate-x-1/2 é o jeito padrão de "estourar" um elemento pra
+          fora do container com padding (max-w-7xl px-4) sem mexer no
+          layout compartilhado (PublicLayout/rotas); -mt-6 cancela
+          exatamente o py-6 do <main> (mesma unidade, 1.5rem), grudando a
+          faixa no cabeçalho sem espaço nenhum entre os dois. */}
+      <div className="md:hidden -mt-6 mb-4 w-screen relative left-1/2 -translate-x-1/2 bg-brand-dark">
+        <div className="flex gap-1 overflow-x-auto px-4 py-3">
           {categories.map(cat => (
             <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              className={`shrink-0 px-3 py-2 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
                 activeCategory === cat.id
-                  ? "bg-green-600 text-white"
-                  : "bg-white text-gray-600 border border-gray-200"
+                  ? "border-green-400 text-white"
+                  : "border-transparent text-white/60 hover:text-white/90"
               }`}>
               {cat.label} ({cat.count})
             </button>
           ))}
         </div>
-
-        {/* Breadcrumb — só faz sentido mostrar quando uma categoria
-            específica está ativa (em "Todos" seria redundante). */}
-        {activeCategory !== "all" && (
-          <p className="text-xs text-gray-400 mb-2">
-            Catálogo <ChevronRight size={11} className="inline mx-0.5 -mt-0.5" /> {categoryLabel}
-          </p>
-        )}
-
-        {/* Section header. A pill verde que ficava aqui repetia o mesmo
-            texto do breadcrumb acima e do h2 logo ao lado — removida
-            (ver item 4 do pedido de melhorias visuais); breadcrumb + título
-            já indicam a categoria ativa sozinhos. */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <h2 className="text-lg font-bold text-gray-800">{categoryLabel}</h2>
-          {!loading && (
-            <span className="text-xs text-gray-400">
-              {filtered.length} produto{filtered.length !== 1 ? "s" : ""}
-            </span>
-          )}
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-            className="ml-auto text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 outline-none focus:border-green-500 bg-white">
-            <option value="relevancia">Relevância</option>
-            <option value="preco-asc">Menor preço</option>
-            <option value="preco-desc">Maior preço</option>
-            <option value="nome-asc">Nome (A-Z)</option>
-          </select>
-        </div>
-
-        {/* Grid mobile-first: 1 coluna por padrão (cobre telas bem estreitas,
-            ex: iPhone SE, 375px, onde 2 colunas deixam o card apertado
-            demais pra ler), 2 colunas a partir de 401px, 3 a partir de sm
-            (640px), 4 a partir de lg (1024px). min-[401px] é um breakpoint
-            abaixo do menor padrão do Tailwind (sm=640px). Skeleton usa a
-            MESMA grid do resultado carregado, pra não ter salto de layout. */}
-        {loading ? (
-          <div className="grid grid-cols-1 min-[401px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Package size={40} className="text-gray-300" />
-            <p className="text-gray-400 font-medium text-sm">
-              {search
-                ? "Nenhum produto encontrado pra essa busca"
-                : activeCategory === "all"
-                  ? "Nenhum produto disponível no momento"
-                  : "Nenhum produto disponível nesta categoria no momento"}
-            </p>
-            {search && (
-              <button onClick={() => setSearch("")}
-                className="text-green-600 text-sm font-semibold hover:text-green-700">
-                Limpar busca
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 min-[401px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filtered.map(product => (
-              <ProductCard key={product.id} product={product}
-                onAdd={() => onAdd(product)}
-                inCart={cart.some(i => i.product.id === product.id)} />
-            ))}
-          </div>
-        )}
       </div>
-    </div>
+
+      <div className="flex gap-5">
+        <CategorySidebar categories={categories} active={activeCategory} onChange={setActiveCategory}
+          mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+
+        <div className="flex-1 min-w-0">
+          {/* Mobile search */}
+          <div className="md:hidden flex items-center bg-white rounded-lg border border-gray-200 mb-3 overflow-hidden">
+            {/* text-base (16px) — abaixo disso o Safari no iOS dá zoom
+                automático ao focar o campo; esse input só existe em mobile
+                (bloco md:hidden acima), então não precisa de reset pro desktop. */}
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar produtos..."
+              className="flex-1 px-3 py-2 text-base text-gray-800 outline-none" />
+            <Search size={16} className="mr-3 text-gray-400 shrink-0" />
+          </div>
+
+          {/* Breadcrumb — só faz sentido mostrar quando uma categoria
+              específica está ativa (em "Todos" seria redundante). */}
+          {activeCategory !== "all" && (
+            <p className="text-xs text-gray-400 mb-2">
+              Catálogo <ChevronRight size={11} className="inline mx-0.5 -mt-0.5" /> {categoryLabel}
+            </p>
+          )}
+
+          {/* Section header. A pill verde que ficava aqui repetia o mesmo
+              texto do breadcrumb acima e do h2 logo ao lado — removida
+              (ver item 4 do pedido de melhorias visuais); breadcrumb + título
+              já indicam a categoria ativa sozinhos. */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <h2 className="text-lg font-bold text-gray-800">{categoryLabel}</h2>
+            {!loading && (
+              <span className="text-xs text-gray-400">
+                {filtered.length} produto{filtered.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+              className="ml-auto text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 outline-none focus:border-green-500 bg-white">
+              <option value="relevancia">Relevância</option>
+              <option value="preco-asc">Menor preço</option>
+              <option value="preco-desc">Maior preço</option>
+              <option value="nome-asc">Nome (A-Z)</option>
+            </select>
+          </div>
+
+          {/* Grid mobile-first: 1 coluna por padrão (cobre telas bem estreitas,
+              ex: iPhone SE, 375px, onde 2 colunas deixam o card apertado
+              demais pra ler), 2 colunas a partir de 401px, 3 a partir de sm
+              (640px), 4 a partir de lg (1024px). min-[401px] é um breakpoint
+              abaixo do menor padrão do Tailwind (sm=640px). Skeleton usa a
+              MESMA grid do resultado carregado, pra não ter salto de layout. */}
+          {loading ? (
+            <div className="grid grid-cols-1 min-[401px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <Package size={40} className="text-gray-300" />
+              <p className="text-gray-400 font-medium text-sm">
+                {search
+                  ? "Nenhum produto encontrado pra essa busca"
+                  : activeCategory === "all"
+                    ? "Nenhum produto disponível no momento"
+                    : "Nenhum produto disponível nesta categoria no momento"}
+              </p>
+              {search && (
+                <button onClick={() => setSearch("")}
+                  className="text-green-600 text-sm font-semibold hover:text-green-700">
+                  Limpar busca
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 min-[401px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {filtered.map(product => (
+                <ProductCard key={product.id} product={product}
+                  onAdd={() => onAdd(product)}
+                  inCart={cart.some(i => i.product.id === product.id)} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -791,6 +804,32 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
                   error={errors.city} placeholder="Cidade" />
               </div>
               <CheckoutField label="Estado" value={form.state} onChange={v => set("state", v)} placeholder="SP" />
+            </div>
+          </div>
+
+          {/* Forma de pagamento — só uma preferência informativa (nunca
+              bloqueia o envio do pedido, ver validate() acima que não
+              inclui este campo): o pagamento em si é sempre fechado
+              depois, por WhatsApp, com um atendente humano — não há
+              cobrança nem gateway aqui. Pré-selecionado com "pix" (opção
+              mais comum), então a mensagem de resumo nunca sai com "Não
+              informado" a menos que o cliente troque e volte, o que não
+              acontece nesse componente. */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2">
+              <Wallet size={15} className="text-green-600" /> Forma de pagamento
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map(metodo => (
+                <button key={metodo} type="button" onClick={() => set("paymentMethod", metodo)}
+                  className={`px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
+                    form.paymentMethod === metodo
+                      ? "bg-green-600 border-green-600 text-white"
+                      : "bg-white border-gray-200 text-gray-600 hover:border-green-300 hover:text-gray-900"
+                  }`}>
+                  {PAYMENT_METHOD_LABELS[metodo]}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1221,6 +1260,13 @@ function PedidosAdminSection({ adminKey }: { adminKey: string }) {
                   </button>
                   {open && (
                     <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+                      {/* paymentMethod é opcional — pedidos de antes desse
+                          campo existir vêm com null/undefined do backend;
+                          "Não informado" cobre esse caso sem quebrar nada. */}
+                      <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                        <Wallet size={12} /> <strong className="text-gray-700">Forma de pagamento:</strong>{" "}
+                        {order.paymentMethod || "Não informado"}
+                      </p>
                       {comFalha && (
                         <button onClick={() => handleTentarNovamente(order.id)} disabled={retrying === order.id}
                           className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors text-sm">
@@ -1681,7 +1727,7 @@ function PublicLayout() {
       <footer className="border-t border-gray-200 bg-white mt-auto">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-black rounded flex flex-col items-center justify-center shrink-0">
+            <div className="w-6 h-6 bg-brand rounded flex flex-col items-center justify-center shrink-0">
               <span className="text-white font-black" style={{ fontSize: "0.37rem" }}>JSV</span>
               <span className="text-green-400 font-black" style={{ fontSize: "0.32rem" }}>CELL</span>
             </div>

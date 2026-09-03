@@ -52,6 +52,7 @@ def listar_pedidos():
             "status": p.status,
             "erroBling": p.erro_bling,
             "blingPedidoId": p.bling_pedido_id,
+            "formaPagamento": p.forma_pagamento,  # None em pedidos antigos — front trata como opcional
             "total": float(p.total),
             "cliente": p.cliente.nome,
             "criadoEm": p.criado_em.isoformat(),

@@ -79,6 +79,18 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+/* Paleta da marca JSV CELL (catálogo público) — cores fixas, não mudam
+   entre claro/escuro (o catálogo não tem modo escuro), por isso ficam num
+   @theme normal (não "inline"/atado a --background etc.). Definidas UMA
+   vez aqui; usadas no app inteiro via as classes que o Tailwind gera
+   sozinho a partir do nome do token (bg-brand, text-brand-dark,
+   border-brand, etc.) — trocar o tom no futuro é editar só estas duas
+   linhas, sem caçar hexadecimal espalhado pelo código. */
+@theme {
+  --color-brand: #172f5f;
+  --color-brand-dark: #0f2347;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

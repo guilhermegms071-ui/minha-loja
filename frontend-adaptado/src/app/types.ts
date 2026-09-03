@@ -22,6 +22,19 @@ export interface CartItem {
   qty: number;
 }
 
+export type PaymentMethod = "credito" | "debito" | "pix" | "dinheiro" | "entrega";
+
+// Rótulo em português enviado ao backend (guardado e exibido como texto
+// puro, sem tradução própria do lado de lá) e mostrado no seletor do
+// checkout e no painel admin — um lugar só pros dois.
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  credito: "Crédito",
+  debito: "Débito",
+  pix: "Pix",
+  dinheiro: "Dinheiro",
+  entrega: "Pagamento na entrega",
+};
+
 export interface Customer {
   name: string;
   whatsapp: string;
@@ -33,6 +46,12 @@ export interface Customer {
   neighborhood: string;
   city: string;
   state: string;
+  // Vive aqui (não num tipo próprio) pra reaproveitar o mesmo estado/campo
+  // "set()" que o resto do formulário de checkout já usa, sem reestruturar
+  // nada. Pré-selecionado com "pix" (opção mais comum) — não é
+  // obrigatório, só uma preferência informativa repassada ao atendente
+  // que fecha o pagamento por WhatsApp; nunca bloqueia o envio do pedido.
+  paymentMethod: PaymentMethod;
 }
 
 export interface Order {
@@ -48,4 +67,9 @@ export interface Order {
   blingId?: string;   // preenchido quando Bling criar o pedido no ERP
   blingOrderNum?: number; // número sequencial do pedido no Bling
   linkPagamento?: string | null; // link wa.me pronto, gerado pelo backend
+  // string (não PaymentMethod) — vem já como rótulo pronto do backend (ver
+  // orderService.createOrder). null/undefined em pedidos de antes desse
+  // campo existir — tratado como "não informado" onde é exibido, nunca
+  // como erro.
+  paymentMethod?: string | null;
 }

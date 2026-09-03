@@ -7,6 +7,21 @@
 import { api } from "./apiService";
 import * as customerService from "./customerService";
 import type { Order, CartItem, Customer } from "../types";
+import { PAYMENT_METHOD_LABELS } from "../types";
+
+/** Endereço de entrega formatado numa linha só — é assim que ele chega no
+ * backend (campo endereco_entrega, ver models.py) e depois na mensagem de
+ * resumo mandada pro atendente. Monta aqui, um lugar só, pra não repetir
+ * a mesma concatenação em outro service no futuro. */
+function formatarEndereco(c: Customer): string {
+  const partes = [
+    `${c.address}${c.number ? `, ${c.number}` : ""}${c.complement ? ` - ${c.complement}` : ""}`,
+    c.neighborhood,
+    c.city && c.state ? `${c.city}/${c.state}` : c.city || c.state,
+    c.cep,
+  ].filter(Boolean);
+  return partes.join(" - ");
+}
 
 interface PedidoBackend {
   id: number;
@@ -17,6 +32,7 @@ interface PedidoBackend {
   frete: number;
   total: number;
   blingPedidoId: string | null;
+  formaPagamento?: string | null;
   criadoEm: string;
   cliente: { nome: string; telefone: string };
   itens: { produtoId: number; nome: string; quantidade: number; precoUnitario: number }[];
@@ -50,6 +66,7 @@ function toOrder(p: PedidoBackend, items: CartItem[], customer: Customer): Order
     status: statusToFrontend(p.status),
     createdAt: p.criadoEm,
     blingId: p.blingPedidoId || undefined,
+    paymentMethod: p.formaPagamento,
   };
 }
 
@@ -66,7 +83,9 @@ export async function createOrder(
       nome: customer.name,
       telefone: customer.whatsapp,
       email: "",
+      endereco: formatarEndereco(customer),
     },
+    formaPagamento: PAYMENT_METHOD_LABELS[customer.paymentMethod],
   };
 
   const pedido = await api.post<PedidoBackend>("/api/pedidos", payload);
@@ -84,7 +103,8 @@ export async function getOrders(adminKey: string): Promise<Order[]> {
   const pedidos = await api.get<
     {
       id: number; numero: string; status: PedidoBackend["status"]; erroBling: string | null;
-      blingPedidoId: string | null; total: number; cliente: string; criadoEm: string;
+      blingPedidoId: string | null; formaPagamento?: string | null;
+      total: number; cliente: string; criadoEm: string;
     }[]
   >("/api/admin/pedidos", { "X-Admin-Key": adminKey });
 
@@ -99,6 +119,7 @@ export async function getOrders(adminKey: string): Promise<Order[]> {
     status: statusToFrontend(p.status),
     createdAt: p.criadoEm,
     blingId: p.blingPedidoId || undefined,
+    paymentMethod: p.formaPagamento,
   }));
 }
 
