@@ -30,9 +30,20 @@ def create_app(config_class=Config):
     # vai funcionar (o navegador vai bloquear a resposta antes mesmo dela
     # chegar ao código do front).
     origens_admin = app.config.get("ALLOWED_ORIGINS") or ["http://localhost:5173"]
+    # Duas rotas de /api/pedidos/* também passaram a exigir sessão
+    # (@requer_sessao, ver cart/routes.py: marcar_pago e retentar_bling) —
+    # mas vivem fora do prefixo /api/admin/*, então caíam no bloco genérico
+    # abaixo (sem supports_credentials), e o navegador bloqueava a resposta
+    # em produção ("Access-Control-Allow-Credentials header is '' which
+    # must be 'true'..."). Isoladas aqui, no mesmo padrão (origem explícita
+    # + supports_credentials=True) do bloco do admin — SEM mexer no resto
+    # de /api/pedidos/* (criar pedido e GET detalhe continuam públicos, sem
+    # sessão, na regra genérica de sempre).
+    _rotas_pedidos_com_sessao = r"pedidos/\d+/(marcar-pago|retentar-bling)"
     CORS(app, resources={
         r"^/api/admin/.*$": {"origins": origens_admin, "supports_credentials": True},
-        r"^/api/(?!admin/).*$": {"origins": origens},
+        rf"^/api/{_rotas_pedidos_com_sessao}$": {"origins": origens_admin, "supports_credentials": True},
+        rf"^/api/(?!admin/)(?!{_rotas_pedidos_com_sessao}).*$": {"origins": origens},
     })
 
     _registrar_blueprints(app)
