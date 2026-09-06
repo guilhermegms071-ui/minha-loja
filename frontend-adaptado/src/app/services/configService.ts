@@ -22,14 +22,15 @@ export interface Configuracoes {
   descontoPadraoPercentual: number;
 }
 
-export async function getConfiguracoes(adminKey: string): Promise<Configuracoes> {
-  return api.get<Configuracoes>("/api/admin/configuracoes", { "X-Admin-Key": adminKey });
+// Autenticado por sessão (cookie do login, ver authService.ts) — não recebe
+// mais nenhuma chave como parâmetro, o navegador manda o cookie sozinho.
+export async function getConfiguracoes(): Promise<Configuracoes> {
+  return api.get<Configuracoes>("/api/admin/configuracoes", undefined, "include");
 }
 
 /** Atualiza só os campos passados em `dados` — os demais mantêm o valor atual. */
 export async function atualizarConfiguracoes(
-  adminKey: string,
   dados: Partial<Configuracoes>
 ): Promise<Configuracoes> {
-  return api.put<Configuracoes>("/api/admin/configuracoes", dados, { "X-Admin-Key": adminKey });
+  return api.put<Configuracoes>("/api/admin/configuracoes", dados, undefined, "include");
 }

@@ -19,7 +19,21 @@ def create_app(config_class=Config):
     limiter.init_app(app)
 
     origens = app.config.get("ALLOWED_ORIGINS") or ["*"]
-    CORS(app, resources={r"/api/*": {"origins": origens}})
+    # /api/admin/* precisa de uma regra CORS separada porque agora usa login
+    # por sessão (cookie) — e cookie de sessão só é enviado/aceito em
+    # requisição cross-origin com supports_credentials=True NO SERVIDOR e
+    # credentials:"include" NO FETCH do front (ver apiService.ts), o que por
+    # sua vez exige uma origem EXPLÍCITA aqui (navegador recusa a combinação
+    # origem "*" + credenciais). Se ALLOWED_ORIGINS não estiver configurado
+    # no .env, cai pro front local de dev — em produção, configure
+    # ALLOWED_ORIGINS com o domínio real do front ou o login do admin não
+    # vai funcionar (o navegador vai bloquear a resposta antes mesmo dela
+    # chegar ao código do front).
+    origens_admin = app.config.get("ALLOWED_ORIGINS") or ["http://localhost:5173"]
+    CORS(app, resources={
+        r"^/api/admin/.*$": {"origins": origens_admin, "supports_credentials": True},
+        r"^/api/(?!admin/).*$": {"origins": origens},
+    })
 
     _registrar_blueprints(app)
     _agendar_sincronizacao(app)

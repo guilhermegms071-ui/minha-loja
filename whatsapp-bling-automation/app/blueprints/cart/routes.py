@@ -17,7 +17,7 @@ from flask import Blueprint, current_app, jsonify, request
 from app.extensions import db
 from app.models import Cliente, Pedido, PedidoItem, Produto
 from app.blueprints.bling import client as bling_client
-from app.blueprints.admin.auth import requer_admin
+from app.blueprints.admin.auth import requer_sessao
 from app.services import config_service
 from app import limiter
 
@@ -28,22 +28,58 @@ bp = Blueprint("pedidos", __name__, url_prefix="/api/pedidos")
 @limiter.limit("10 per minute")
 def criar():
     payload = request.get_json(force=True)
+    resultado, status = criar_pedido(payload)
+    return jsonify(resultado), status
+
+
+def criar_pedido(payload: dict) -> tuple[dict, int]:
+    """Lógica de criação de pedido em si, separada da rota HTTP pra poder
+    ser reaproveitada tanto pelo checkout público (POST /api/pedidos, sem
+    login — chama esta função direto) quanto pela Venda Balcão do painel
+    admin (POST /api/admin/venda-balcao, exige sessão — ver
+    app/blueprints/admin/routes.py), sem duplicar validação de estoque,
+    cálculo de preço/desconto ou integração com o Bling: a regra de
+    negócio é uma só, só muda quem tem permissão de chamar. Retorna
+    (corpo_da_resposta, status_code) — quem chama decide como servir isso
+    (as duas rotas fazem jsonify(resultado), status)."""
     config = config_service.obter_configuracao()
 
     itens_payload = payload.get("itens", [])
     cliente_payload = payload.get("cliente", {})
+    # Venda balcão (painel admin, funcionário registrando venda presencial):
+    # não tem os dados de entrega que o fluxo do WhatsApp/catálogo exige —
+    # ver bloco abaixo. Fora esse desvio pontual (nome/telefone), o resto
+    # da função (validação de estoque, criação no Bling, cálculo de total)
+    # é EXATAMENTE o mesmo caminho de código pros dois fluxos — nada
+    # duplicado, só esses dois campos tratados diferente antes do upsert
+    # de cliente.
+    venda_balcao = bool(payload.get("vendaBalcao"))
 
     if not itens_payload:
-        return jsonify({"erro": "Carrinho vazio"}), 400
-    if not cliente_payload.get("telefone"):
-        return jsonify({"erro": "Telefone do cliente é obrigatório"}), 400
+        return {"erro": "Carrinho vazio"}, 400
 
-    # 1. Cliente local (upsert por telefone)
-    cliente = Cliente.query.filter_by(telefone=cliente_payload["telefone"]).first()
+    if venda_balcao:
+        # Nome/telefone viram opcionais SÓ aqui — sentinela fixa (mesmo
+        # telefone sempre) faz toda venda balcão sem cliente identificado
+        # cair no MESMO contato "Cliente Balcão", local e na Bling (upsert
+        # por telefone já existente logo abaixo cuida disso sozinho, sem
+        # precisar de nenhum tratamento especial de duplicidade aqui).
+        nome_cliente = cliente_payload.get("nome") or "Cliente Balcão"
+        telefone_cliente = cliente_payload.get("telefone") or "00000000000"
+    else:
+        # Fluxo normal (WhatsApp/catálogo) — validação EXATAMENTE igual a
+        # antes desta tarefa, nada afrouxado.
+        if not cliente_payload.get("telefone"):
+            return {"erro": "Telefone do cliente é obrigatório"}, 400
+        nome_cliente = cliente_payload.get("nome", "")
+        telefone_cliente = cliente_payload["telefone"]
+
+    # 1. Cliente local (upsert por telefone) — mesmo caminho pros dois fluxos
+    cliente = Cliente.query.filter_by(telefone=telefone_cliente).first()
     if cliente is None:
         cliente = Cliente(
-            nome=cliente_payload.get("nome", ""),
-            telefone=cliente_payload["telefone"],
+            nome=nome_cliente,
+            telefone=telefone_cliente,
             email=cliente_payload.get("email", ""),
         )
         db.session.add(cliente)
@@ -55,18 +91,18 @@ def criar():
     for item in itens_payload:
         produto = Produto.query.get(item["produtoId"])
         if produto is None or not produto.ativo:
-            return jsonify({"erro": f"Produto {item['produtoId']} indisponível"}), 400
+            return {"erro": f"Produto {item['produtoId']} indisponível"}, 400
 
         quantidade = int(item["quantidade"])
         if quantidade <= 0:
-            return jsonify({"erro": f"Quantidade inválida para o produto {produto.nome}"}), 400
+            return {"erro": f"Quantidade inválida para o produto {produto.nome}"}, 400
         if produto.estoque < quantidade:
-            return jsonify({
+            return {
                 "erro": "estoque_insuficiente",
                 "mensagem": f"'{produto.nome}' tem apenas {produto.estoque} em estoque (pedido: {quantidade})",
                 "produtoId": produto.id,
                 "estoqueDisponivel": produto.estoque,
-            }), 409
+            }, 409
 
         preco_unitario = produto.preco  # preço vem do cache local, não do front
         subtotal += float(preco_unitario) * quantidade
@@ -79,15 +115,20 @@ def criar():
 
     # Pedido mínimo (configurável pelo lojista) — barra o pedido ANTES de
     # criar qualquer coisa no banco, com erro claro pro front mostrar.
+    # NÃO se aplica à venda balcão de propósito: essa regra existe pra
+    # desestimular pedido pequeno demais pra compensar o frete/entrega —
+    # não faz sentido pra uma venda presencial, sem entrega nenhuma. Não
+    # foi pedido explicitamente, decisão minha — ver relatório desta tarefa.
     pedido_minimo = float(config.pedido_minimo or 0)
-    if pedido_minimo > 0 and subtotal < pedido_minimo:
-        return jsonify({
+    if not venda_balcao and pedido_minimo > 0 and subtotal < pedido_minimo:
+        return {
             "erro": "pedido_abaixo_do_minimo",
             "mensagem": f"O pedido mínimo é de R$ {pedido_minimo:.2f} (subtotal atual: R$ {subtotal:.2f})",
             "pedidoMinimo": pedido_minimo,
-        }), 400
+        }, 400
 
-    frete = float(payload.get("frete", 6.0))
+    # Venda balcão nunca tem frete — venda presencial, sem entrega.
+    frete = 0.0 if venda_balcao else float(payload.get("frete", 6.0))
 
     # Desconto padrão da loja (percentual único, configurável pelo lojista),
     # aplicado sobre o subtotal — etapa separada e comentada de propósito,
@@ -137,37 +178,7 @@ def criar():
 
     resposta = _serialize(pedido)
     resposta["linkPagamento"] = _gerar_link_pagamento(pedido)
-    return jsonify(resposta), 201
-
-
-@bp.route("/por-telefone")
-def listar_por_telefone():
-    """Rota PÚBLICA (sem @requer_admin) — usada pela tela 'Meus pedidos' do
-    próprio cliente, que não tem (e não deveria precisar de) a chave de
-    admin da loja.
-
-    LIMITAÇÃO DE SEGURANÇA CONHECIDA E ACEITA: isso NÃO é autenticação de
-    verdade — é só uma filtragem por número de telefone, sem senha nem OTP.
-    Qualquer pessoa que souber (ou adivinhar) o telefone de outro cliente
-    consegue ver os pedidos dele por aqui (número, itens, valores — não
-    expõe credencial nem dado de pagamento). Suficiente pro cliente ver os
-    próprios pedidos sem precisar da chave de admin; evoluir pra login/OTP
-    por telefone fica pra uma iteração futura, se a loja precisar de mais
-    privacidade entre clientes."""
-    telefone = (request.args.get("telefone") or "").strip()
-    if not telefone:
-        return jsonify({"erro": "Parâmetro 'telefone' é obrigatório"}), 400
-
-    cliente = Cliente.query.filter_by(telefone=telefone).first()
-    if cliente is None:
-        return jsonify([])
-
-    pedidos = (
-        Pedido.query.filter_by(cliente_id=cliente.id)
-        .order_by(Pedido.criado_em.desc())
-        .all()
-    )
-    return jsonify([_serialize(p) for p in pedidos])
+    return resposta, 201
 
 
 @bp.route("/<int:pedido_id>")
@@ -177,9 +188,19 @@ def detalhe(pedido_id):
 
 
 @bp.route("/<int:pedido_id>/retentar-bling", methods=["POST"])
+@requer_sessao
 def retentar_bling(pedido_id):
     """Permite reprocessar manualmente um pedido que falhou ao criar no Bling —
-    usado pelo painel do lojista quando erro_bling não é None."""
+    usado pelo painel do lojista quando erro_bling não é None.
+
+    Antes desta correção, essa rota não exigia autenticação nenhuma —
+    qualquer um de fora podia chamá-la direto e disparar tentativa de
+    criação de venda no Bling repetidamente, sem senha nenhuma. Mesmo
+    padrão de login por sessão usado no resto do painel (ver
+    marcar_pago logo abaixo, que já tinha proteção — só que com
+    @requer_admin/ADMIN_API_KEY, que foi trocado aqui por @requer_sessao
+    porque esta rota SÓ é chamada pelo humano logado no painel, nunca por
+    um processo automático)."""
     pedido = Pedido.query.get_or_404(pedido_id)
     cliente = pedido.cliente
     itens_validados = [
@@ -191,7 +212,7 @@ def retentar_bling(pedido_id):
 
 
 @bp.route("/<int:pedido_id>/marcar-pago", methods=["POST"])
-@requer_admin
+@requer_sessao
 def marcar_pago(pedido_id):
     """Botão 'Marcar como pago' do painel admin — usado quando o atendente
     confirma manualmente pelo WhatsApp que o cliente pagou (não há gateway

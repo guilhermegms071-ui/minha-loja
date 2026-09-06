@@ -2,14 +2,120 @@
 (porque tudo ficava isolado no localStorage de cada cliente)."""
 import re
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
+from werkzeug.security import check_password_hash
 
 from app.extensions import db
 from app.models import ConfiguracaoLoja, Pedido
-from app.blueprints.admin.auth import requer_admin
+from app.blueprints.admin.auth import requer_sessao
+from app.blueprints.cart.routes import criar_pedido
 from app.services import config_service
 
 bp = Blueprint("admin", __name__, url_prefix="/api/admin")
+
+
+# ─── Login (sessão) ─────────────────────────────────────────────────────────
+# Usuário/senha únicos, guardados em ADMIN_USERNAME/ADMIN_PASSWORD_HASH no
+# .env — ver config.py e o comentário em app/blueprints/admin/auth.py sobre
+# por que isso coexiste com ADMIN_API_KEY (chaves diferentes, chamadores
+# diferentes) em vez de substituí-la.
+
+@bp.route("/login", methods=["POST"])
+def login():
+    usuario_esperado = current_app.config.get("ADMIN_USERNAME")
+    hash_esperado = current_app.config.get("ADMIN_PASSWORD_HASH")
+
+    if not usuario_esperado or not hash_esperado:
+        # Mesmo padrão do requer_admin: sem credencial configurada no .env,
+        # o painel fica bloqueado por padrão, nunca aberto por esquecimento.
+        return jsonify({"erro": "Login do admin não configurado no servidor"}), 503
+
+    payload = request.get_json(force=True, silent=True) or {}
+    usuario = payload.get("usuario", "")
+    senha = payload.get("senha", "")
+
+    # Senha NUNCA comparada em texto puro — check_password_hash confere o
+    # hash salvo no .env contra a senha recebida (ver instruções de como
+    # gerar esse hash no .env.example).
+    if usuario != usuario_esperado or not check_password_hash(hash_esperado, senha):
+        return jsonify({"erro": "Usuário ou senha inválidos"}), 401
+
+    session.permanent = True  # ativa PERMANENT_SESSION_LIFETIME (8h, ver config.py)
+    session["admin_logado"] = True
+    return jsonify({"ok": True})
+
+
+@bp.route("/logout", methods=["POST"])
+def logout():
+    session.pop("admin_logado", None)
+    return jsonify({"ok": True})
+
+
+@bp.route("/me")
+def me():
+    """Sem @requer_sessao de propósito — é chamada justamente pra DESCOBRIR
+    se há sessão válida (ex: ao abrir o painel), então precisa responder
+    mesmo sem estar logado, só que com logado=False em vez de 401."""
+    return jsonify({"logado": bool(session.get("admin_logado"))})
+
+
+# ─── Venda balcão ───────────────────────────────────────────────────────────
+
+@bp.route("/venda-balcao", methods=["POST"])
+@requer_sessao
+def venda_balcao():
+    """Rota própria pro painel (exige sessão), separada de POST /api/pedidos
+    (que continua público, sem login, pro checkout do cliente final) — as
+    duas chamam a MESMA função criar_pedido por baixo (ver
+    app/blueprints/cart/routes.py), então validação de estoque, cálculo de
+    preço e integração com o Bling são idênticos nos dois fluxos, sem
+    lógica duplicada. Só o payload difere: aqui vendaBalcao é sempre True,
+    nunca decidido pelo corpo da requisição (evita depender do front mandar
+    o campo certo pra valer a proteção de sessão)."""
+    payload = request.get_json(force=True, silent=True) or {}
+    payload["vendaBalcao"] = True
+    resultado, status = criar_pedido(payload)
+    return jsonify(resultado), status
+
+
+# ─── Sincronização Bling (proxy autenticado por sessão) ────────────────────
+# /bling/sync e /bling/sync-estoque em si continuam exigindo ADMIN_API_KEY
+# (@requer_admin, ver app/blueprints/bling/routes.py) — de propósito, é o
+# scheduler automático (app/__init__.py) quem chama elas direto, sem
+# ninguém logado. O botão "Sincronizar" do painel, apertado por um humano,
+# não deveria precisar saber/colar a ADMIN_API_KEY (isso venceria o
+# propósito de ter só usuário/senha) — por isso passa por aqui: exige
+# sessão de login normal, e só então repassa a chamada usando a
+# ADMIN_API_KEY que já está no servidor (nunca exposta ao navegador),
+# exatamente como o scheduler já fazia.
+@bp.route("/sincronizar-catalogo", methods=["POST"])
+@requer_sessao
+def sincronizar_catalogo():
+    return _proxy_sync("/bling/sync")
+
+
+@bp.route("/sincronizar-estoque", methods=["POST"])
+@requer_sessao
+def sincronizar_estoque():
+    return _proxy_sync("/bling/sync-estoque")
+
+
+def _proxy_sync(caminho: str):
+    import requests
+
+    # Mesmo endereço fixo (localhost:5000, o processo Flask chamando a si
+    # mesmo) que o scheduler automático já usa em app/__init__.py — repete
+    # o padrão existente de propósito, em vez de introduzir BASE_URL aqui
+    # (que pode apontar pro domínio público atrás de um proxy reverso, uma
+    # rota diferente da que o próprio processo já garante alcançar).
+    chave = current_app.config.get("ADMIN_API_KEY", "")
+    try:
+        resp = requests.post(
+            f"http://localhost:5000{caminho}", headers={"X-Admin-Key": chave}, timeout=60
+        )
+        return jsonify(resp.json()), resp.status_code
+    except requests.RequestException as e:
+        return jsonify({"erro": f"Falha ao repassar sincronização: {e}"}), 502
 
 # Campos que o painel pode editar via PUT /api/admin/configuracoes, com o
 # tipo esperado de cada um — usado tanto pra validar quanto pra converter o
@@ -42,7 +148,7 @@ def _camel_para_snake(nome: str) -> str:
 
 
 @bp.route("/pedidos")
-@requer_admin
+@requer_sessao
 def listar_pedidos():
     pedidos = Pedido.query.order_by(Pedido.criado_em.desc()).all()
     return jsonify([
@@ -62,13 +168,13 @@ def listar_pedidos():
 
 
 @bp.route("/configuracoes")
-@requer_admin
+@requer_sessao
 def obter_configuracoes():
     return jsonify(_serialize_config(config_service.obter_configuracao()))
 
 
 @bp.route("/configuracoes", methods=["PUT"])
-@requer_admin
+@requer_sessao
 def atualizar_configuracoes():
     """Atualiza só os campos enviados no corpo da requisição — campos
     omitidos mantêm o valor atual (não é preciso reenviar tudo a cada
@@ -116,7 +222,7 @@ def _serialize_config(config: ConfiguracaoLoja) -> dict:
 
 
 @bp.route("/resumo")
-@requer_admin
+@requer_sessao
 def resumo():
     pedidos = Pedido.query.all()
     falharam = [p for p in pedidos if p.status == "falhou_bling"]

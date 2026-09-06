@@ -1,12 +1,32 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 class Config:
+    # ATENÇÃO: agora que existe login por sessão (ver ADMIN_USERNAME/
+    # ADMIN_PASSWORD_HASH abaixo), SECRET_KEY passou a ser o que assina o
+    # cookie de sessão do admin — com o valor padrão "dev" (ou qualquer
+    # valor fraco/previsível), alguém poderia forjar um cookie de sessão
+    # válido sem saber usuário/senha. Troque por um valor aleatório forte em
+    # produção (ex: openssl rand -hex 32).
     SECRET_KEY = os.getenv("SECRET_KEY", "dev")
     BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
+
+    # Sessão do login do painel admin (ver app/blueprints/admin/auth.py) —
+    # dura 8h a partir do login, depois disso o painel pede login de novo.
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    # "Lax" funciona quando front e back estão no mesmo "site" (mesmo
+    # domínio registrável, mesmo em portas/subdomínios diferentes — é o caso
+    # do localhost:5173 + localhost:5000 em dev). Se em produção o front e o
+    # back ficarem em domínios REALMENTE diferentes (ex: loja.com.br e
+    # api-outra-coisa.com.br), troque para "None" e SESSION_COOKIE_SECURE
+    # para "true" (exige HTTPS) — sem isso o navegador não manda o cookie
+    # de sessão entre domínios diferentes.
+    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL", "sqlite:///dev.db"
@@ -67,8 +87,23 @@ class Config:
     # Número do funcionário que finaliza o pagamento (fluxo real da loja)
     ATENDENTE_PAGAMENTO_TELEFONE = os.getenv("ATENDENTE_PAGAMENTO_TELEFONE", "")
 
-    # Protege as rotas /api/admin/* — exigido no header X-Admin-Key
+    # Protege /bling/sync, /bling/sync-estoque e /bling/situacoes — exigido
+    # no header X-Admin-Key. Uso reservado a chamadas automáticas/internas
+    # (o scheduler que sincroniza o Bling sozinho, em app/__init__.py) e a
+    # uso manual via curl/Postman — o painel admin em si (usado por humano
+    # no navegador) usa login por sessão (ver ADMIN_USERNAME abaixo), nunca
+    # esta chave.
     ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
+    # Login único do painel admin — um usuário/senha fixos, guardados aqui
+    # do mesmo jeito que ADMIN_API_KEY já era (variável de ambiente, sem
+    # tabela no banco: não há necessidade de múltiplos usuários nem de
+    # permissões diferenciadas para um único operador). A senha NUNCA fica
+    # em texto puro — ADMIN_PASSWORD_HASH guarda o hash gerado com
+    # werkzeug.security.generate_password_hash (ver instruções no
+    # .env.example), e o login compara com check_password_hash.
+    ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
+    ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
 
     # ── IA na conversa do WhatsApp (opcional) ───────────────────────
     # Camada de INTERPRETAÇÃO por cima do menu numérico — a IA só classifica

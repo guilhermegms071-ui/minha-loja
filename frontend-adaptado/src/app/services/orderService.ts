@@ -6,7 +6,7 @@
 
 import { api } from "./apiService";
 import * as customerService from "./customerService";
-import type { Order, CartItem, Customer } from "../types";
+import type { Order, CartItem, Customer, PaymentMethod } from "../types";
 import { PAYMENT_METHOD_LABELS } from "../types";
 
 /** Endereço de entrega formatado numa linha só — é assim que ele chega no
@@ -98,15 +98,38 @@ export async function createOrder(
   return { ...order, linkPagamento: pedido.linkPagamento };
 }
 
-/** Lista pedidos — usado no painel admin. Requer a chave de admin. */
-export async function getOrders(adminKey: string): Promise<Order[]> {
+/** Venda balcão — funcionário registrando venda presencial no painel admin,
+ * SEM os dados de entrega que o checkout normal exige (nome/telefone
+ * viram opcionais no backend, ver cart/routes.py, só quando vendaBalcao
+ * for true). Rota PRÓPRIA do admin (POST /api/admin/venda-balcao, exige
+ * sessão de login) — diferente de POST /api/pedidos (que continua público,
+ * sem login, só pro checkout do cliente final). As duas chamam a MESMA
+ * função de criação de pedido no backend (criar_pedido), então validação
+ * de estoque, cálculo de preço e integração com o Bling continuam
+ * idênticos — nada duplicado, só a rota (e a autenticação) é outra. */
+export async function criarVendaBalcao(
+  itens: { produtoId: number; quantidade: number }[],
+  metodoPagamento: PaymentMethod
+): Promise<Order> {
+  const payload = {
+    vendaBalcao: true,
+    itens,
+    formaPagamento: PAYMENT_METHOD_LABELS[metodoPagamento],
+  };
+  const pedido = await api.post<PedidoBackend>("/api/admin/venda-balcao", payload, undefined, "include");
+  return toOrder(pedido, [], { name: pedido.cliente.nome, whatsapp: pedido.cliente.telefone } as Customer);
+}
+
+/** Lista pedidos — usado no painel admin. Autenticado por sessão (cookie do
+ * login, ver authService.ts). */
+export async function getOrders(): Promise<Order[]> {
   const pedidos = await api.get<
     {
       id: number; numero: string; status: PedidoBackend["status"]; erroBling: string | null;
       blingPedidoId: string | null; formaPagamento?: string | null;
       total: number; cliente: string; criadoEm: string;
     }[]
-  >("/api/admin/pedidos", { "X-Admin-Key": adminKey });
+  >("/api/admin/pedidos", undefined, "include");
 
   return pedidos.map((p) => ({
     id: String(p.id),
@@ -123,19 +146,6 @@ export async function getOrders(adminKey: string): Promise<Order[]> {
   }));
 }
 
-/** Lista os pedidos de UM telefone específico — usado pela tela "Meus
- * pedidos" do próprio cliente. Rota pública (sem chave de admin); ver a
- * limitação de segurança documentada no backend em cart/routes.py — não é
- * autenticação de verdade, só filtragem por telefone. */
-export async function getOrdersByPhone(telefone: string): Promise<Order[]> {
-  const pedidos = await api.get<PedidoBackend[]>(
-    `/api/pedidos/por-telefone?telefone=${encodeURIComponent(telefone)}`
-  );
-  return pedidos.map((p) =>
-    toOrder(p, [], { name: p.cliente.nome, whatsapp: p.cliente.telefone } as Customer)
-  );
-}
-
 export interface OrderSummary {
   total: number;
   count: number;
@@ -144,14 +154,14 @@ export interface OrderSummary {
   avgTicket: number;
 }
 
-/** Resumo para o painel admin. Requer a chave de admin. */
-export async function getOrderSummary(adminKey: string): Promise<OrderSummary> {
+/** Resumo para o painel admin. Autenticado por sessão. */
+export async function getOrderSummary(): Promise<OrderSummary> {
   const resumo = await api.get<{
     totalPedidos: number;
     faturamento: number;
     pendentesBling: number;
     ticketMedio: number;
-  }>("/api/admin/resumo", { "X-Admin-Key": adminKey });
+  }>("/api/admin/resumo", undefined, "include");
 
   return {
     total: resumo.totalPedidos,
@@ -162,16 +172,20 @@ export async function getOrderSummary(adminKey: string): Promise<OrderSummary> {
   };
 }
 
-/** Reprocessa um pedido que falhou ao criar no Bling. */
+/** Reprocessa um pedido que falhou ao criar no Bling. Autenticado por
+ * sessão — antes desta tarefa essa rota não exigia NENHUMA autenticação
+ * (bug de segurança real: qualquer um de fora podia chamar e disparar
+ * tentativa de criação de venda no Bling repetidamente). */
 export async function retryBling(orderId: string): Promise<void> {
-  await api.post(`/api/pedidos/${orderId}/retentar-bling`);
+  await api.post(`/api/pedidos/${orderId}/retentar-bling`, undefined, undefined, "include");
 }
 
 /** Botão "Marcar como pago" do painel admin — usado quando o atendente
  * confirma manualmente pelo WhatsApp que o cliente pagou (não há gateway
  * de pagamento aqui). Avança a situação do pedido no Bling, o que dispara
  * a baixa de estoque nativa de lá. Requer o pedido já ter sido criado no
- * Bling (blingId preenchido) — o backend recusa se não tiver. */
-export async function marcarComoPago(orderId: string, adminKey: string): Promise<void> {
-  await api.post(`/api/pedidos/${orderId}/marcar-pago`, undefined, { "X-Admin-Key": adminKey });
+ * Bling (blingId preenchido) — o backend recusa se não tiver. Autenticado
+ * por sessão. */
+export async function marcarComoPago(orderId: string): Promise<void> {
+  await api.post(`/api/pedidos/${orderId}/marcar-pago`, undefined, undefined, "include");
 }

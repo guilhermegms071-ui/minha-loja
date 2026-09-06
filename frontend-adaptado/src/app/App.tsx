@@ -5,12 +5,12 @@ import {
 } from "react-router";
 import { Toaster, toast } from "sonner";
 import {
-  Search, ShoppingCart, User, LayoutGrid, Menu, X,
+  Search, ShoppingCart, User, Menu, X,
   Minus, Plus, Trash2, Check, ChevronRight, ArrowLeft,
   Shield, Package, Smartphone, Zap, Plug, Camera,
   Wrench, Box, ClipboardList, Settings, AlertCircle,
   CheckCircle2, Eye, EyeOff, ExternalLink, Info,
-  MapPin, Phone, FileText, ChevronDown, RefreshCw,
+  MapPin, Phone, FileText, RefreshCw,
   MessageCircle, Clock, TrendingUp, BarChart2, Wallet,
 } from "lucide-react";
 
@@ -24,6 +24,7 @@ import * as orderService   from "./services/orderService";
 import * as configService  from "./services/configService";
 import * as customerService from "./services/customerService";
 import * as whatsappService from "./services/whatsappService";
+import * as authService from "./services/authService";
 
 // ─── Contexto compartilhado entre as páginas públicas (carrinho etc.) ──────────
 // Rotas agora são URLs de verdade (react-router) em vez de um estado interno
@@ -137,91 +138,41 @@ function Logo({ compact = false }: { compact?: boolean }) {
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 
-function Header({ cartCount, onMenuClick, search, setSearch, setActiveCategory }: {
+function Header({ cartCount, onMenuClick }: {
   cartCount: number; onMenuClick: () => void;
-  search: string; setSearch: (v: string) => void; setActiveCategory: (c: Category) => void;
 }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Compartilhado com o catálogo via PublicContext (ver interface acima) —
-  // digitar/clicar aqui atualiza o MESMO estado que o CatalogView usa pra
-  // filtrar. Se o usuário não estiver na página do catálogo (/), navega
-  // pra lá também, senão o filtro mudaria sem nada visível reagindo.
-  const irParaCatalogoSeNecessario = () => {
-    if (location.pathname !== "/") navigate("/");
-  };
-
-  const handleSearchChange = (v: string) => {
-    setSearch(v);
-    irParaCatalogoSeNecessario();
-  };
-
-  const handleCategoriasClick = () => {
-    // Atalho pra "ver o catálogo completo": limpa o filtro de categoria
-    // (volta pra "Todos") e garante que está na página certa pra ver o
-    // resultado. Não abre dropdown — decisão de manter simples, ver
-    // relatório desta tarefa.
-    setActiveCategory("all");
-    irParaCatalogoSeNecessario();
-  };
-
+  // Header simplificado pra só 3 elementos (pedido explícito desta tarefa):
+  // hambúrguer à esquerda, logo centralizada, carrinho à direita. A busca
+  // saiu daqui — agora vive só dentro da própria página do catálogo (ver
+  // CatalogView), num card branco full-width, como pedido; "Categorias" e
+  // "Minha conta" saíram do header (categorias agora são chips sempre
+  // visíveis na página, e a tela de "Minha conta"/pedidos por telefone foi
+  // removida nesta mesma tarefa — ver relatório). onMenuClick continua
+  // chamando exatamente a mesma função de antes (abre a gaveta de
+  // categorias no mobile, ver CategorySidebar) — não mudei o que ela faz,
+  // só tirei os outros itens ao redor dela.
   return (
     <header className="bg-brand text-white sticky top-0 z-50 shadow-lg">
       {/* grid de 3 colunas (não flex) — só assim a coluna do meio (a logo)
-          fica de verdade centralizada no header inteiro, não "puxada" pro
-          lado que tiver menos conteúdo do outro (o que aconteceria com
-          flex + margin-auto quando as colunas laterais têm larguras
-          diferentes, como aqui: busca de um lado, ícones do outro). */}
+          fica de verdade centralizada no header inteiro, mesmo os dois
+          lados tendo larguras diferentes de conteúdo. */}
       <div className="max-w-7xl mx-auto px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <button className="md:hidden text-white/50 hover:text-white transition-colors" onClick={onMenuClick}>
+        <div className="flex items-center">
+          <button className="md:hidden text-white/70 hover:text-white transition-colors" onClick={onMenuClick} aria-label="Abrir categorias">
             <Menu size={22} />
           </button>
-
-          {/* Busca — escondida em mobile (abaixo de md=768px) — a página de
-              catálogo já tem seu próprio campo de busca dedicado e
-              funcional (ver CatalogView), então esconder aqui não reduz a
-              descoberta da função; só evita apertar o cabeçalho no
-              celular, que já divide espaço com o botão de menu e a logo
-              centralizada. Continua igual em telas ≥768px. */}
-          <div className="hidden md:block w-full max-w-xs">
-            <div className="flex items-center bg-white rounded-lg overflow-hidden shadow-inner">
-              <input type="text" placeholder="Buscar produtos..."
-                value={search} onChange={e => handleSearchChange(e.target.value)}
-                className="flex-1 min-w-0 px-3 py-2 text-gray-800 text-sm outline-none bg-transparent" />
-              <button className="px-3 py-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
-                <Search size={17} />
-              </button>
-            </div>
-          </div>
         </div>
 
         <Logo />
 
-        {/* Sem ícone/link de admin aqui de propósito — o painel interno
-            (/painel-interno) não é acessível por nenhum botão do catálogo
-            público, só por quem já conhece a URL direta. */}
-        <div className="flex items-center justify-end gap-0.5 min-w-0">
-          <button onClick={handleCategoriasClick}
-            className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/5">
-            <LayoutGrid size={15} /><span>Categorias</span>
-          </button>
-          <Link to="/meus-pedidos"
-            className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/5">
-            <User size={15} /><span>Minha conta</span>
-          </Link>
-          <Link to="/carrinho"
-            className="relative flex items-center gap-1.5 px-3 py-2 text-xs text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/5">
-            <div className="relative">
-              <ShoppingCart size={20} />
-              {cartCount > 0 && (
-                <span className="absolute -top-2.5 -right-2.5 bg-green-500 text-white text-[9px] rounded-full w-[18px] h-[18px] flex items-center justify-center font-bold">
-                  {cartCount}
-                </span>
-              )}
-            </div>
-            <span className="hidden md:block">Carrinho</span>
+        <div className="flex items-center justify-end">
+          <Link to="/carrinho" className="relative text-white/80 hover:text-white transition-colors" aria-label="Carrinho">
+            <ShoppingCart size={22} />
+            {cartCount > 0 && (
+              <span className="absolute -top-2 -right-2.5 bg-green-500 text-white text-[9px] rounded-full w-[18px] h-[18px] flex items-center justify-center font-bold">
+                {cartCount}
+              </span>
+            )}
           </Link>
         </div>
       </div>
@@ -252,9 +203,13 @@ function CategorySidebar({ categories, active, onChange, mobileOpen, onClose }: 
     </nav>
   );
 
+  // O <aside> vertical de desktop que existia aqui foi removido — as
+  // categorias em chips horizontais (ver CatalogView) substituem a lista
+  // vertical em TODAS as telas agora, pedido explícito desta tarefa. Esse
+  // componente virou só a gaveta mobile (mesma lógica/estado de antes,
+  // hambúrguer do header continua abrindo exatamente isso, sem mudança).
   return (
     <>
-      <aside className="w-44 shrink-0 hidden md:block">{nav}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={onClose} />
@@ -327,19 +282,18 @@ function ProductCard({ product, onAdd, inCart }: {
         </p>
         <p className="text-lg font-bold text-gray-900">{R(product.price)}</p>
 
-        {product.inStock ? (
-          product.stockQty < 3 ? (
-            <p className="text-xs text-orange-600 font-semibold flex items-center gap-1">
-              <AlertCircle size={11} strokeWidth={3} className="shrink-0" /> Últimas unidades
-            </p>
-          ) : (
-            <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
-              <Check size={11} strokeWidth={3} className="shrink-0" /> Em estoque
-            </p>
-          )
-        ) : (
-          <p className="text-xs text-gray-400 font-medium">Fora de estoque</p>
-        )}
+        {/* Etiqueta de estoque — 2 estados só (pedido explícito desta
+            tarefa, no lugar dos 3 estados que existiam antes: "Em estoque"
+            verde / "Últimas unidades" laranja / "Fora de estoque" cinza).
+            Usa o MESMO campo product.inStock que já vinha do Bling, sem
+            nenhuma lógica nova — só a etiqueta/cor mudou. */}
+        <p className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full w-fit ${
+          product.inStock ? "bg-green-50 text-green-700" : "bg-[#fee2e2] text-[#b91c1c]"
+        }`}>
+          {product.inStock
+            ? <><Check size={11} strokeWidth={3} className="shrink-0" /> Em estoque</>
+            : <><Clock size={11} strokeWidth={3} className="shrink-0" /> Sob encomenda</>}
+        </p>
 
         {/* min-h-11 (44px) garante área de toque mínima recomendada em
             mobile; md:min-h-0 desfaz esse piso a partir de 768px, mantendo
@@ -404,111 +358,104 @@ function CatalogView({ cart, onAdd, activeCategory, setActiveCategory, mobileMen
 
   return (
     <>
-      {/* Faixa de categorias — só mobile (desktop mantém a sidebar vertical
-          branca abaixo, já testada, sem mudança). Barra nova, larga a tela
-          inteira e encostada no cabeçalho: w-screen + left-1/2
-          -translate-x-1/2 é o jeito padrão de "estourar" um elemento pra
-          fora do container com padding (max-w-7xl px-4) sem mexer no
-          layout compartilhado (PublicLayout/rotas); -mt-6 cancela
-          exatamente o py-6 do <main> (mesma unidade, 1.5rem), grudando a
-          faixa no cabeçalho sem espaço nenhum entre os dois. */}
-      <div className="md:hidden -mt-6 mb-4 w-screen relative left-1/2 -translate-x-1/2 bg-brand-dark">
-        <div className="flex gap-1 overflow-x-auto px-4 py-3">
-          {categories.map(cat => (
-            <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
-              className={`shrink-0 px-3 py-2 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
-                activeCategory === cat.id
-                  ? "border-green-400 text-white"
-                  : "border-transparent text-white/60 hover:text-white/90"
-              }`}>
-              {cat.label} ({cat.count})
+      {/* Gaveta de categorias mobile — mesma lógica/estado de sempre
+          (hambúrguer do header abre isso); virou só isso agora que a
+          sidebar vertical de desktop foi removida do próprio componente
+          (ver CategorySidebar) — as chips logo abaixo são a via principal
+          de trocar categoria em qualquer tamanho de tela. */}
+      <CategorySidebar categories={categories} active={activeCategory} onChange={setActiveCategory}
+        mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+
+      {/* Busca — full-width, card branco, agora em TODAS as telas (antes só
+          existia essa versão no mobile, escondida no desktop; o cabeçalho
+          também tinha uma cópia própria só pra desktop — removida, ver
+          relatório desta tarefa). Mesmo estado (search/setSearch) e mesma
+          lógica de filtro de sempre, só virou visível sempre e ganhou o
+          estilo de card. */}
+      <div className="flex items-center bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
+        {/* text-base (16px) — abaixo disso o Safari no iOS dá zoom automático
+            ao focar o campo; md:text-sm volta ao tamanho normal no desktop. */}
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar produtos..."
+          className="flex-1 px-4 py-3 text-base md:text-sm text-gray-800 outline-none" />
+        <Search size={18} className="mr-4 text-gray-400 shrink-0" />
+      </div>
+
+      {/* Categorias em chips horizontais roláveis — substitui a lista
+          vertical (sidebar) que existia antes em desktop; chama a MESMA
+          função de filtro (setActiveCategory) de sempre, só o visual/
+          estrutura do seletor mudou. Em todas as telas agora, não só mobile. */}
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1">
+        {categories.map(cat => (
+          <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
+            className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap border transition-colors ${
+              activeCategory === cat.id
+                ? "bg-brand border-brand text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:border-brand/40 hover:text-brand"
+            }`}>
+            {cat.label} ({cat.count})
+          </button>
+        ))}
+      </div>
+
+      {/* Breadcrumb — só faz sentido mostrar quando uma categoria
+          específica está ativa (em "Todos" seria redundante). */}
+      {activeCategory !== "all" && (
+        <p className="text-xs text-gray-400 mb-2">
+          Catálogo <ChevronRight size={11} className="inline mx-0.5 -mt-0.5" /> {categoryLabel}
+        </p>
+      )}
+
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <h2 className="text-lg font-bold text-gray-800">{categoryLabel}</h2>
+        {!loading && (
+          <span className="text-xs text-gray-400">
+            {filtered.length} produto{filtered.length !== 1 ? "s" : ""}
+          </span>
+        )}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+          className="ml-auto text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 outline-none focus:border-green-500 bg-white">
+          <option value="relevancia">Relevância</option>
+          <option value="preco-asc">Menor preço</option>
+          <option value="preco-desc">Maior preço</option>
+          <option value="nome-asc">Nome (A-Z)</option>
+        </select>
+      </div>
+
+      {/* Grid: 2 colunas no mobile, 4 no desktop — pedido explícito desta
+          tarefa (antes eram 4 passos: 1/2/3/4 colunas conforme a largura).
+          Skeleton usa a MESMA grid do resultado carregado, pra não ter
+          salto de layout. */}
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Package size={40} className="text-gray-300" />
+          <p className="text-gray-400 font-medium text-sm">
+            {search
+              ? "Nenhum produto encontrado pra essa busca"
+              : activeCategory === "all"
+                ? "Nenhum produto disponível no momento"
+                : "Nenhum produto disponível nesta categoria no momento"}
+          </p>
+          {search && (
+            <button onClick={() => setSearch("")}
+              className="text-green-600 text-sm font-semibold hover:text-green-700">
+              Limpar busca
             </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {filtered.map(product => (
+            <ProductCard key={product.id} product={product}
+              onAdd={() => onAdd(product)}
+              inCart={cart.some(i => i.product.id === product.id)} />
           ))}
         </div>
-      </div>
-
-      <div className="flex gap-5">
-        <CategorySidebar categories={categories} active={activeCategory} onChange={setActiveCategory}
-          mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
-
-        <div className="flex-1 min-w-0">
-          {/* Mobile search */}
-          <div className="md:hidden flex items-center bg-white rounded-lg border border-gray-200 mb-3 overflow-hidden">
-            {/* text-base (16px) — abaixo disso o Safari no iOS dá zoom
-                automático ao focar o campo; esse input só existe em mobile
-                (bloco md:hidden acima), então não precisa de reset pro desktop. */}
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar produtos..."
-              className="flex-1 px-3 py-2 text-base text-gray-800 outline-none" />
-            <Search size={16} className="mr-3 text-gray-400 shrink-0" />
-          </div>
-
-          {/* Breadcrumb — só faz sentido mostrar quando uma categoria
-              específica está ativa (em "Todos" seria redundante). */}
-          {activeCategory !== "all" && (
-            <p className="text-xs text-gray-400 mb-2">
-              Catálogo <ChevronRight size={11} className="inline mx-0.5 -mt-0.5" /> {categoryLabel}
-            </p>
-          )}
-
-          {/* Section header. A pill verde que ficava aqui repetia o mesmo
-              texto do breadcrumb acima e do h2 logo ao lado — removida
-              (ver item 4 do pedido de melhorias visuais); breadcrumb + título
-              já indicam a categoria ativa sozinhos. */}
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <h2 className="text-lg font-bold text-gray-800">{categoryLabel}</h2>
-            {!loading && (
-              <span className="text-xs text-gray-400">
-                {filtered.length} produto{filtered.length !== 1 ? "s" : ""}
-              </span>
-            )}
-            <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-              className="ml-auto text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 outline-none focus:border-green-500 bg-white">
-              <option value="relevancia">Relevância</option>
-              <option value="preco-asc">Menor preço</option>
-              <option value="preco-desc">Maior preço</option>
-              <option value="nome-asc">Nome (A-Z)</option>
-            </select>
-          </div>
-
-          {/* Grid mobile-first: 1 coluna por padrão (cobre telas bem estreitas,
-              ex: iPhone SE, 375px, onde 2 colunas deixam o card apertado
-              demais pra ler), 2 colunas a partir de 401px, 3 a partir de sm
-              (640px), 4 a partir de lg (1024px). min-[401px] é um breakpoint
-              abaixo do menor padrão do Tailwind (sm=640px). Skeleton usa a
-              MESMA grid do resultado carregado, pra não ter salto de layout. */}
-          {loading ? (
-            <div className="grid grid-cols-1 min-[401px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <Package size={40} className="text-gray-300" />
-              <p className="text-gray-400 font-medium text-sm">
-                {search
-                  ? "Nenhum produto encontrado pra essa busca"
-                  : activeCategory === "all"
-                    ? "Nenhum produto disponível no momento"
-                    : "Nenhum produto disponível nesta categoria no momento"}
-              </p>
-              {search && (
-                <button onClick={() => setSearch("")}
-                  className="text-green-600 text-sm font-semibold hover:text-green-700">
-                  Limpar busca
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 min-[401px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filtered.map(product => (
-                <ProductCard key={product.id} product={product}
-                  onAdd={() => onAdd(product)}
-                  inCart={cart.some(i => i.product.id === product.id)} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </>
   );
 }
@@ -614,16 +561,66 @@ function CartView({ items, setQty, remove, onCheckout, onBack }: {
                 <span className="text-green-600 text-lg">{R(total)}</span>
               </div>
             </div>
+            {/* hidden lg:flex — no mobile o resumo/botão viram a barra fixa
+                embaixo (ver abaixo); mesmo onClick (onCheckout, mesma rota
+                de sempre) só que reaproveitado lá. Desktop sem mudança. */}
             <button onClick={onCheckout}
-              className="mt-5 w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
-              Confirmar pedido <ChevronRight size={18} />
+              className="mt-5 w-full hidden lg:flex bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-3 rounded-xl transition-colors items-center justify-center gap-2">
+              Continuar <ChevronRight size={18} />
             </button>
-            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-400">
+            <div className="mt-3 hidden lg:flex items-center justify-center gap-1.5 text-xs text-gray-400">
               <Shield size={13} /> <span>Ambiente seguro e protegido</span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Resumo fixo embaixo (mobile) — pedido explícito desta tarefa:
+          subtotal/entrega/total sempre visíveis + botão "Continuar", sem
+          precisar rolar. Mesmo onCheckout de sempre (mesma rota /checkout),
+          só reaproveitado aqui. pb-20 no <main> do PublicLayout já reserva
+          espaço embaixo pra essa barra não cobrir conteúdo. */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Subtotal</span><span>{R(subtotal)}</span>
+        </div>
+        <div className="flex justify-between text-xs text-gray-500 mb-2">
+          <span>Entrega</span><span>{R(FRETE)}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="shrink-0">
+            <p className="text-[11px] text-gray-500 leading-none">Total</p>
+            <p className="text-base font-bold text-green-600 leading-tight">{R(total)}</p>
+          </div>
+          <button onClick={onCheckout}
+            className="flex-1 min-h-11 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+            Continuar <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Seletor de forma de pagamento — extraído aqui (nível do módulo) porque é
+// usado em DOIS lugares: o checkout normal (CheckoutView) e a Venda Balcão
+// do painel admin (VendaBalcaoSection). Mesmo componente, mesmas opções
+// (PAYMENT_METHOD_LABELS), evita ter a mesma lista de botões duplicada.
+function PaymentMethodSelector({ value, onChange }: {
+  value: PaymentMethod; onChange: (metodo: PaymentMethod) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map(metodo => (
+        <button key={metodo} type="button" onClick={() => onChange(metodo)}
+          className={`px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
+            value === metodo
+              ? "bg-green-600 border-green-600 text-white"
+              : "bg-white border-gray-200 text-gray-600 hover:border-green-300 hover:text-gray-900"
+          }`}>
+          {PAYMENT_METHOD_LABELS[metodo]}
+        </button>
+      ))}
     </div>
   );
 }
@@ -639,9 +636,14 @@ function CartView({ items, setQty, remove, onCheckout, onBack }: {
 // value/onChange como props diretas (componente controlado comum) em vez
 // de fechar sobre "set"/"form" do escopo de CheckoutView — única forma de
 // ficar fora do componente pai e continuar funcionando.
-function CheckoutField({ label, value, onChange, error, placeholder, type = "text" }: {
+function CheckoutField({ label, value, onChange, error, placeholder, type = "text", valid = false }: {
   label: string; value: string; onChange: (v: string) => void;
   error?: string; placeholder?: string; type?: string;
+  // "válido" é só um espelho visual das MESMAS regras que validate() já
+  // usa pra decidir cada erro (ex: !!form.name.trim()) — calculado pelo
+  // chamador, não uma validação nova; só acende a borda verde, nunca
+  // decide sozinho se o formulário pode ser enviado.
+  valid?: boolean;
 }) {
   return (
     <div>
@@ -655,7 +657,9 @@ function CheckoutField({ label, value, onChange, error, placeholder, type = "tex
         className={`w-full px-3 py-2.5 text-base md:text-sm border rounded-lg outline-none transition-colors ${
           error
             ? "border-red-400 bg-red-50"
-            : "border-gray-200 focus:border-green-500 focus:ring-1 focus:ring-green-200"
+            : valid
+              ? "border-green-500"
+              : "border-gray-200 focus:border-green-500 focus:ring-1 focus:ring-green-200"
         }`} />
       {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
@@ -664,7 +668,7 @@ function CheckoutField({ label, value, onChange, error, placeholder, type = "tex
 
 function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }: {
   items: CartItem[]; savedCustomer: Customer;
-  onConfirm: (c: Customer) => void; onBack: () => void; isSubmitting: boolean;
+  onConfirm: (c: Customer, paymentWindow: Window | null) => void; onBack: () => void; isSubmitting: boolean;
 }) {
   const [form,       setForm      ] = useState<Customer>(savedCustomer);
   const [loadingCep, setLoadingCep] = useState(false);
@@ -715,6 +719,21 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
     return Object.keys(e).length === 0;
   };
 
+  // Abre a aba do WhatsApp DENTRO do mesmo gesto de clique do usuário —
+  // window.open("", "_blank") síncrono aqui ainda conta como iniciado por
+  // clique real pro navegador, então não é bloqueado como pop-up. A URL só
+  // é definida depois (em CheckoutPage, quando o POST /api/pedidos volta
+  // com sucesso e o linkPagamento fica disponível) — nesse ponto o clique
+  // original já terminou, mas a aba em si já existia, então setar location
+  // nela não conta mais como "abrir pop-up novo". Sem isso, esperar o
+  // POST assíncrono terminar antes de chamar window.open() seria bloqueado
+  // pela maioria dos navegadores (mobile principalmente).
+  const handleSubmit = () => {
+    if (!validate()) return;
+    const paymentWindow = window.open("", "_blank");
+    onConfirm(form, paymentWindow);
+  };
+
   return (
     <div className="max-w-3xl mx-auto">
       <button onClick={onBack}
@@ -722,30 +741,18 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
         <ArrowLeft size={15} /> Voltar ao carrinho
       </button>
 
-      {/* Steps */}
-      <div className="flex items-center gap-2 mb-7 text-sm">
-        {["Carrinho", "Cadastro", "Confirmação"].map((step, i) => (
-          <div key={step} className="flex items-center gap-2">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-              i === 0 ? "bg-green-100 text-green-700" :
-              i === 1 ? "bg-green-600 text-white" : "bg-gray-100 text-gray-400"
-            }`}>
-              {i === 0 ? <Check size={12} strokeWidth={3} /> : i + 1}
-            </div>
-            <span className={i === 1 ? "font-bold text-gray-900" : "text-gray-400"}>{step}</span>
-            {i < 2 && <ChevronRight size={14} className="text-gray-300" />}
-          </div>
-        ))}
-      </div>
-
-      {/* Total sempre visível no topo, só em mobile (abaixo de lg=1024px) —
-          no formulário empilhado (flex-col), o resumo com o total só
-          aparece lá embaixo, depois de rolar por todo o formulário; isso dá
-          contexto de valor sem precisar mexer na ordem dos blocos nem no
-          botão de finalizar, que continua exatamente onde estava. */}
-      <div className="lg:hidden flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-3 mb-4">
-        <span className="text-sm font-semibold text-gray-600">Total do pedido</span>
-        <span className="text-lg font-bold text-green-600">{R(total)}</span>
+      {/* Barra de progresso — só visual (pedido explícito desta tarefa: não
+          é um wizard de verdade, continua sendo uma tela só; os mesmos 3
+          rótulos de antes, "Cadastro" sempre marcado como etapa atual). */}
+      <div className="mb-7">
+        <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+          {["Carrinho", "Cadastro", "Confirmação"].map((step, i) => (
+            <span key={step} className={i <= 1 ? "text-brand" : "text-gray-400"}>{step}</span>
+          ))}
+        </div>
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-brand rounded-full transition-all" style={{ width: "66%" }} />
+        </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-5">
@@ -757,10 +764,10 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
             </h3>
             <div className="space-y-3">
               <CheckoutField label="Nome completo *" value={form.name} onChange={v => set("name", v)}
-                error={errors.name} placeholder="Seu nome completo" />
+                error={errors.name} valid={!!form.name.trim()} placeholder="Seu nome completo" />
               <div className="grid grid-cols-2 gap-3">
                 <CheckoutField label="WhatsApp *" value={form.whatsapp} onChange={v => set("whatsapp", v)}
-                  error={errors.whatsapp} placeholder="(11) 99999-9999" type="tel" />
+                  error={errors.whatsapp} valid={!!form.whatsapp.trim()} placeholder="(11) 99999-9999" type="tel" />
                 <CheckoutField label="CPF / CNPJ" value={form.cpfCnpj} onChange={v => set("cpfCnpj", v)}
                   placeholder="000.000.000-00" />
               </div>
@@ -781,7 +788,11 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
                     onBlur={() => lookupCep(form.cep)}
                     placeholder="00000-000"
                     className={`w-full px-3 py-2.5 text-base md:text-sm border rounded-lg outline-none transition-colors pr-9 ${
-                      errors.cep ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-green-500 focus:ring-1 focus:ring-green-200"
+                      errors.cep
+                        ? "border-red-400 bg-red-50"
+                        : form.cep.trim()
+                          ? "border-green-500"
+                          : "border-gray-200 focus:border-green-500 focus:ring-1 focus:ring-green-200"
                     }`} />
                   {loadingCep && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
@@ -790,10 +801,10 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
                 {errors.cep && <p className="text-red-500 text-xs mt-1">{errors.cep}</p>}
               </div>
               <CheckoutField label="Endereço *" value={form.address} onChange={v => set("address", v)}
-                error={errors.address} placeholder="Rua, Avenida..." />
+                error={errors.address} valid={!!form.address.trim()} placeholder="Rua, Avenida..." />
               <div className="grid grid-cols-2 gap-3">
                 <CheckoutField label="Número *" value={form.number} onChange={v => set("number", v)}
-                  error={errors.number} placeholder="123" />
+                  error={errors.number} valid={!!form.number.trim()} placeholder="123" />
                 <CheckoutField label="Complemento" value={form.complement} onChange={v => set("complement", v)}
                   placeholder="Apto, Bloco..." />
               </div>
@@ -801,7 +812,7 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
                 <CheckoutField label="Bairro" value={form.neighborhood} onChange={v => set("neighborhood", v)}
                   placeholder="Bairro" />
                 <CheckoutField label="Cidade *" value={form.city} onChange={v => set("city", v)}
-                  error={errors.city} placeholder="Cidade" />
+                  error={errors.city} valid={!!form.city.trim()} placeholder="Cidade" />
               </div>
               <CheckoutField label="Estado" value={form.state} onChange={v => set("state", v)} placeholder="SP" />
             </div>
@@ -819,18 +830,7 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
             <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2">
               <Wallet size={15} className="text-green-600" /> Forma de pagamento
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map(metodo => (
-                <button key={metodo} type="button" onClick={() => set("paymentMethod", metodo)}
-                  className={`px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
-                    form.paymentMethod === metodo
-                      ? "bg-green-600 border-green-600 text-white"
-                      : "bg-white border-gray-200 text-gray-600 hover:border-green-300 hover:text-gray-900"
-                  }`}>
-                  {PAYMENT_METHOD_LABELS[metodo]}
-                </button>
-              ))}
-            </div>
+            <PaymentMethodSelector value={form.paymentMethod} onChange={v => set("paymentMethod", v)} />
           </div>
 
           <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 flex gap-3">
@@ -863,18 +863,47 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
                 <span className="text-green-600">{R(total)}</span>
               </div>
             </div>
+            {/* hidden lg:flex — no mobile esse botão fica só na barra fixa
+                embaixo (ver abaixo), pra não duplicar o CTA na tela;
+                desktop mantém exatamente como estava (sidebar sticky já
+                cumpre o papel de "sempre visível" lá). Mesmo onClick/
+                disabled/isSubmitting de sempre, só a visibilidade mudou. */}
             <button
-              onClick={() => { if (validate()) onConfirm(form); }}
+              onClick={handleSubmit}
               disabled={isSubmitting}
-              className="mt-4 w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold py-3 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+              className="mt-4 w-full hidden lg:flex bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold py-3 rounded-xl transition-colors text-sm items-center justify-center gap-2">
               {isSubmitting ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Confirmando...</>
               ) : (
-                <>Finalizar pedido <ChevronRight size={16} /></>
+                <>Confirmar no WhatsApp <ChevronRight size={16} /></>
               )}
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Botão fixo embaixo (mobile) — pedido explícito desta tarefa: total
+          + "Confirmar no WhatsApp" sempre visíveis, sem precisar rolar até
+          o fim do formulário. Chama a MESMA função de submit de sempre
+          (validate() + onConfirm(form)) — nada de lógica nova, só reaproveita
+          o handler que já existia no botão inline (agora escondido no
+          mobile, ver acima). pb-24 no <main> do PublicLayout já reserva
+          espaço embaixo pra essa barra não cobrir conteúdo. */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+        <div className="shrink-0">
+          <p className="text-[11px] text-gray-500 leading-none">Total</p>
+          <p className="text-base font-bold text-green-600 leading-tight">{R(total)}</p>
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+          className="flex-1 min-h-11 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+          {isSubmitting ? (
+            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Confirmando...</>
+          ) : (
+            <>Confirmar no WhatsApp <ChevronRight size={16} /></>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -882,11 +911,9 @@ function CheckoutView({ items, savedCustomer, onConfirm, onBack, isSubmitting }:
 
 // ─── Confirmation View ────────────────────────────────────────────────────────
 
-function ConfirmationView({ order, onContinue, onViewOrders }: {
-  order: Order; onContinue: () => void; onViewOrders: () => void;
+function ConfirmationView({ order, onContinue }: {
+  order: Order; onContinue: () => void;
 }) {
-  const paymentLink = whatsappService.getPaymentLink(order);
-
   return (
     <div className="max-w-xl mx-auto py-6">
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
@@ -908,12 +935,9 @@ function ConfirmationView({ order, onContinue, onViewOrders }: {
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {/* WhatsApp CTA — principal ação */}
-          <a href={paymentLink} target="_blank" rel="noreferrer"
-            className="flex items-center justify-center gap-3 w-full bg-[#25d366] hover:bg-[#20b858] active:bg-[#1da050] text-white font-bold py-4 rounded-xl transition-colors text-base shadow-sm">
-            <MessageCircle size={22} />
-            Finalizar pagamento pelo WhatsApp
-          </a>
+          {/* O WhatsApp já foi aberto automaticamente ao confirmar o pedido
+              (ver handleConfirmOrder em CheckoutPage) — sem botão aqui pra
+              não pedir um segundo clique pra uma ação que já aconteceu. */}
           <p className="text-center text-xs text-gray-400">
             Um atendente irá confirmar os detalhes e a forma de pagamento.
           </p>
@@ -960,31 +984,37 @@ function ConfirmationView({ order, onContinue, onViewOrders }: {
             </div>
           </div>
 
-          {/* Next steps */}
+          {/* Linha do tempo — só representação visual do status (o pedido
+              acabou de ser criado, então só "Recebido" já aconteceu de
+              verdade); não existe tracking de verdade por trás disso hoje,
+              não inventei nenhum. Substitui a lista "Próximos passos" que
+              existia antes, mesma informação, só apresentada como timeline
+              horizontal em vez de checklist vertical. */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <h4 className="font-bold text-gray-800 mb-3 text-sm">Próximos passos</h4>
-            <ul className="space-y-2">
-              {["Análise do pedido pela equipe","Conferência de estoque","Atendente entra em contato para pagamento"].map(step => (
-                <li key={step} className="flex items-center gap-2 text-sm text-gray-600">
-                  <span className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                    <Check size={10} className="text-green-600" strokeWidth={3} />
+            <h4 className="font-bold text-gray-800 mb-4 text-sm">Status do pedido</h4>
+            <div className="flex items-start">
+              {["Recebido", "Pagamento", "Separação", "Enviado"].map((etapa, i) => (
+                <div key={etapa} className="flex-1 flex flex-col items-center text-center relative">
+                  {i > 0 && (
+                    <div className={`absolute top-3 right-1/2 w-full h-0.5 ${i === 1 ? "bg-green-600" : "bg-gray-200"}`} />
+                  )}
+                  <span className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                    i === 0 ? "bg-green-600 text-white" : "bg-gray-200 text-gray-400"
+                  }`}>
+                    {i === 0 ? <Check size={12} strokeWidth={3} /> : i + 1}
                   </span>
-                  {step}
-                </li>
+                  <span className={`mt-1.5 text-[11px] font-semibold ${i === 0 ? "text-green-700" : "text-gray-400"}`}>
+                    {etapa}
+                  </span>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
 
-          <div className="flex gap-3">
-            <button onClick={onViewOrders}
-              className="flex-1 border-2 border-gray-200 text-gray-600 hover:border-green-300 hover:text-green-700 font-semibold py-2.5 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-              <ClipboardList size={15} /> Meus pedidos
-            </button>
-            <button onClick={onContinue}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl transition-colors text-sm">
-              Continuar comprando
-            </button>
-          </div>
+          <button onClick={onContinue}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors text-sm">
+            Continuar comprando
+          </button>
         </div>
       </div>
     </div>
@@ -1002,129 +1032,15 @@ const STATUS_INFO: Record<Order["status"], { label: string; color: string }> = {
   cancelado:  { label: "Cancelado",  color: "bg-red-100    text-red-700"    },
 };
 
-function OrdersView({ onBack }: { onBack: () => void }) {
-  const [orders,   setOrders  ] = useState<Order[]>([]);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [loading,  setLoading ] = useState(false);
-  const [buscou,   setBuscou  ] = useState(false);
-  // Pré-preenche com o telefone salvo de uma compra anterior (conveniência
-  // de UI só — nunca é usado como autenticação de verdade).
-  const [telefone, setTelefone] = useState(() => customerService.getCustomer().whatsapp || "");
-
-  // Tela do CLIENTE — usa a rota pública /api/pedidos/por-telefone (filtra
-  // só pelos pedidos daquele telefone), NUNCA a chave de admin da loja.
-  // Ver limitação de segurança documentada em cart/routes.py: não é
-  // autenticação de verdade, é só filtragem por telefone.
-  const buscar = (tel: string) => {
-    const limpo = tel.trim();
-    if (!limpo) return;
-    setLoading(true);
-    orderService.getOrdersByPhone(limpo)
-      .then((data) => { setOrders(data); setBuscou(true); })
-      .catch(() => toast.error("Erro ao buscar pedidos"))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    if (telefone) buscar(telefone);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (!buscou) {
-    return (
-      <div className="max-w-md mx-auto py-10 text-center">
-        <ClipboardList size={40} className="text-gray-200 mx-auto mb-3" />
-        <p className="text-gray-500 text-sm mb-4">
-          Informe o WhatsApp usado na compra pra ver seus pedidos.
-        </p>
-        <div className="flex gap-2 max-w-xs mx-auto">
-          <input value={telefone} onChange={e => setTelefone(e.target.value)}
-            placeholder="(11) 99999-9999" type="tel"
-            className="flex-1 px-3 py-2 text-base md:text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500" />
-          <button onClick={() => buscar(telefone)} disabled={loading}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-4 rounded-lg text-sm">
-            {loading ? "..." : "Ver"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-2xl mx-auto">
-      <button onClick={onBack}
-        className="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-semibold mb-5">
-        <ArrowLeft size={15} /> Continuar comprando
-      </button>
-      <h2 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-        <ClipboardList size={20} className="text-green-600" /> Meus pedidos
-      </h2>
-      <div className="flex gap-2 mb-5 max-w-xs">
-        <input value={telefone} onChange={e => setTelefone(e.target.value)}
-          placeholder="(11) 99999-9999" type="tel"
-          className="flex-1 px-3 py-2 text-base md:text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500" />
-        <button onClick={() => buscar(telefone)} disabled={loading}
-          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-4 rounded-lg text-sm">
-          Buscar
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 flex flex-col items-center gap-3">
-          <RefreshCw size={24} className="text-gray-300 animate-spin" />
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 flex flex-col items-center gap-3">
-          <ClipboardList size={40} className="text-gray-200" />
-          <p className="text-gray-400 font-medium">Nenhum pedido encontrado pra esse telefone</p>
-        </div>
-      ) : orders.map(order => {
-        const st   = STATUS_INFO[order.status];
-        const open = expanded === order.id;
-        return (
-          <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-3">
-            <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
-              onClick={() => setExpanded(open ? null : order.id)}>
-              <div className="flex items-center gap-3 text-left">
-                <FileText size={18} className="text-green-600 shrink-0" />
-                <div>
-                  <p className="font-bold text-gray-900 text-sm">{order.number}</p>
-                  <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleString("pt-BR")}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-green-600 text-sm">{R(order.total)}</span>
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${st.color}`}>{st.label}</span>
-                <ChevronDown size={16} className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
-              </div>
-            </button>
-
-            {open && (
-              <div className="border-t border-gray-100 px-5 py-4">
-                <p className="text-xs text-gray-500 mb-3">
-                  <strong className="text-gray-700">Cliente:</strong> {order.customer.name}
-                </p>
-                <div className="border-t border-dashed border-gray-200 mt-2 pt-2 flex justify-between text-sm font-bold">
-                  <span className="text-gray-900">Total</span>
-                  <span className="text-green-600">{R(order.total)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Admin: lista de pedidos + marcar como pago ────────────────────────────────
-// Mora aqui (não em OrdersView, que agora é "Meus pedidos" do CLIENTE) porque
-// ver todos os pedidos da loja e marcar pagamento são ações do lojista,
-// protegidas pela chave de admin.
+// Ver todos os pedidos da loja e marcar pagamento são ações do lojista,
+// protegidas pela chave de admin — por isso mora só aqui, dentro do painel
+// interno (não existe mais tela pública equivalente pro cliente ver os
+// próprios pedidos — removida, ver relatório desta tarefa).
 
 const PEDIDOS_POR_PAGINA = 10;
 
-function PedidosAdminSection({ adminKey }: { adminKey: string }) {
+function PedidosAdminSection() {
   const [orders,       setOrders      ] = useState<Order[]>([]);
   const [loading,      setLoading     ] = useState(true);
   const [expanded,     setExpanded    ] = useState<string | null>(null);
@@ -1136,11 +1052,11 @@ function PedidosAdminSection({ adminKey }: { adminKey: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    orderService.getOrders(adminKey)
+    orderService.getOrders()
       .then(setOrders)
       .catch((e: unknown) => mostrarErroAdmin(e, "Erro ao carregar pedidos"))
       .finally(() => setLoading(false));
-  }, [adminKey]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1150,7 +1066,7 @@ function PedidosAdminSection({ adminKey }: { adminKey: string }) {
   const handleMarcarPago = async (orderId: string) => {
     setMarking(orderId);
     try {
-      await orderService.marcarComoPago(orderId, adminKey);
+      await orderService.marcarComoPago(orderId);
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "pago" } : o));
       toast.success("Pedido marcado como pago — baixa de estoque disparada no Bling.");
     } catch (e: unknown) {
@@ -1311,17 +1227,190 @@ function PedidosAdminSection({ adminKey }: { adminKey: string }) {
   );
 }
 
+// ─── Admin: Venda Balcão ────────────────────────────────────────────────────────
+
+interface ItemVendaBalcao { product: Product; qty: number }
+
+/** Registro rápido de venda presencial pelo funcionário — SEM os dados de
+ * entrega que o fluxo do WhatsApp/catálogo exige (nome, telefone, endereço).
+ * Reaproveita: a mesma busca de produtos do catálogo (productService), o
+ * mesmo seletor de forma de pagamento do checkout (PaymentMethodSelector),
+ * e as MESMAS duas rotas já existentes e validadas (POST /api/pedidos com
+ * vendaBalcao:true, depois POST .../marcar-pago) — nada de lógica de
+ * pedido/Bling/estoque reescrita aqui, só orquestração de UI. */
+function VendaBalcaoSection() {
+  const [busca,        setBusca       ] = useState("");
+  const [resultados,   setResultados  ] = useState<Product[]>([]);
+  const [buscando,     setBuscando    ] = useState(false);
+  const [carrinho,     setCarrinho    ] = useState<ItemVendaBalcao[]>([]);
+  const [metodo,       setMetodo      ] = useState<PaymentMethod>("dinheiro");
+  const [finalizando,  setFinalizando ] = useState(false);
+
+  // Busca com debounce (catálogo real tem milhares de produtos — sem
+  // debounce seria uma chamada de API por tecla digitada).
+  useEffect(() => {
+    if (!busca.trim()) { setResultados([]); return; }
+    setBuscando(true);
+    const timer = setTimeout(() => {
+      productService.getProducts({ busca })
+        .then(produtos => setResultados(produtos.slice(0, 8))) // só os 8 primeiros — é busca rápida de balcão, não o catálogo inteiro
+        .catch(() => toast.error("Erro ao buscar produtos"))
+        .finally(() => setBuscando(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [busca]);
+
+  const adicionar = (produto: Product) => {
+    setCarrinho(c => {
+      const existente = c.find(i => i.product.id === produto.id);
+      if (existente) {
+        return c.map(i => i.product.id === produto.id ? { ...i, qty: i.qty + 1 } : i);
+      }
+      return [...c, { product: produto, qty: 1 }];
+    });
+    setBusca("");
+    setResultados([]);
+  };
+
+  const alterarQtd = (produtoId: number, qty: number) => {
+    if (qty <= 0) { setCarrinho(c => c.filter(i => i.product.id !== produtoId)); return; }
+    setCarrinho(c => c.map(i => i.product.id === produtoId ? { ...i, qty } : i));
+  };
+
+  const remover = (produtoId: number) => setCarrinho(c => c.filter(i => i.product.id !== produtoId));
+
+  const total = carrinho.reduce((s, i) => s + i.product.price * i.qty, 0);
+
+  // Duas chamadas HTTP em sequência (criar pedido -> marcar como pago),
+  // reaproveitando as duas rotas já existentes sem alterar nenhuma das
+  // duas — do ponto de vista do funcionário é UM clique, UM resultado.
+  // Cada etapa que pode falhar tem sua própria mensagem específica, pra
+  // nunca deixar o funcionário sem saber o que realmente aconteceu.
+  const finalizarVenda = async () => {
+    if (carrinho.length === 0) return;
+    setFinalizando(true);
+    try {
+      const itens = carrinho.map(i => ({ produtoId: i.product.id, quantidade: i.qty }));
+      const pedido = await orderService.criarVendaBalcao(itens, metodo);
+
+      if (!pedido.blingId) {
+        // _tentar_criar_no_bling falhou lá no backend — o pedido local
+        // existe (visível em Pedidos), mas marcar-pago recusaria (exige
+        // blingId) — nem tenta, evita um segundo erro sem sentido.
+        toast.error(
+          `Pedido ${pedido.number} criado, mas houve erro ao criar no Bling — verifique manualmente o pedido ${pedido.number} no painel de Pedidos.`,
+          { duration: 8000 }
+        );
+        setCarrinho([]);
+        return;
+      }
+
+      try {
+        await orderService.marcarComoPago(pedido.id);
+        toast.success(`Venda ${pedido.number} registrada — estoque baixado no Bling!`);
+        setCarrinho([]);
+      } catch {
+        toast.error(
+          `Pedido ${pedido.number} criado e registrado no Bling, mas houve erro ao marcar como pago — verifique manualmente o pedido ${pedido.number} no painel de Pedidos.`,
+          { duration: 8000 }
+        );
+        setCarrinho([]);
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao registrar a venda");
+    } finally {
+      setFinalizando(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <h3 className="font-bold text-gray-900 mb-1 text-sm flex items-center gap-2">
+        <ShoppingCart size={15} className="text-green-600" /> Venda Balcão
+      </h3>
+      <p className="text-xs text-gray-400 mb-4">
+        Venda presencial rápida, sem dados de entrega — cria o pedido e já
+        marca como pago, disparando a baixa de estoque no Bling.
+      </p>
+
+      {/* Busca de produto */}
+      <div className="relative mb-3">
+        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+          <Search size={15} className="ml-3 text-gray-400 shrink-0" />
+          <input value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar produto por nome..."
+            className="flex-1 px-2.5 py-2.5 text-sm outline-none" />
+        </div>
+        {(resultados.length > 0 || buscando) && (
+          <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+            {buscando ? (
+              <p className="px-3 py-2.5 text-xs text-gray-400">Buscando...</p>
+            ) : resultados.map(produto => (
+              <button key={produto.id} onClick={() => adicionar(produto)} disabled={!produto.inStock}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed border-b border-gray-50 last:border-0">
+                <span className="truncate">{produto.name}</span>
+                <span className="shrink-0 font-semibold text-gray-600">{R(produto.price)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Carrinho rápido */}
+      {carrinho.length === 0 ? (
+        <p className="text-xs text-gray-400 py-6 text-center">Nenhum item adicionado ainda.</p>
+      ) : (
+        <div className="space-y-2 mb-4">
+          {carrinho.map(item => (
+            <div key={item.product.id} className="flex items-center gap-2 py-2 border-b border-gray-50 last:border-0">
+              <span className="flex-1 text-sm text-gray-800 truncate">{item.product.name}</span>
+              <span className="text-xs text-gray-400 shrink-0">{R(item.product.price)}</span>
+              <input type="number" min={1} value={item.qty}
+                onChange={e => alterarQtd(item.product.id, Number(e.target.value))}
+                className="w-14 px-1.5 py-1 text-sm text-center border border-gray-200 rounded-lg outline-none focus:border-green-500 shrink-0" />
+              <span className="w-16 text-right text-sm font-bold text-gray-900 shrink-0">{R(item.product.price * item.qty)}</span>
+              <button onClick={() => remover(item.product.id)}
+                className="text-gray-300 hover:text-red-400 transition-colors shrink-0">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Forma de pagamento — reaproveita o mesmo componente do checkout */}
+      <p className="text-xs font-semibold text-gray-600 mb-2">Forma de pagamento</p>
+      <PaymentMethodSelector value={metodo} onChange={setMetodo} />
+
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+        <div>
+          <p className="text-xs text-gray-500">Total</p>
+          <p className="text-xl font-bold text-green-600">{R(total)}</p>
+        </div>
+        <button onClick={finalizarVenda} disabled={carrinho.length === 0 || finalizando}
+          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl transition-colors text-sm flex items-center gap-2">
+          {finalizando ? (
+            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Registrando...</>
+          ) : (
+            <><Check size={16} strokeWidth={3} /> Finalizar Venda</>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin: configurações da loja ──────────────────────────────────────────────
 
-function ConfiguracoesLojaForm({ adminKey }: { adminKey: string }) {
+function ConfiguracoesLojaForm() {
   const [config, setConfig] = useState<configService.Configuracoes | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    configService.getConfiguracoes(adminKey)
+    configService.getConfiguracoes()
       .then(setConfig)
       .catch((e: unknown) => mostrarErroAdmin(e, "Erro ao carregar configurações"));
-  }, [adminKey]);
+  }, []);
 
   const set = <K extends keyof configService.Configuracoes>(
     campo: K, valor: configService.Configuracoes[K]
@@ -1331,7 +1420,7 @@ function ConfiguracoesLojaForm({ adminKey }: { adminKey: string }) {
     if (!config) return;
     setSaving(true);
     try {
-      const atualizado = await configService.atualizarConfiguracoes(adminKey, config);
+      const atualizado = await configService.atualizarConfiguracoes(config);
       setConfig(atualizado);
       toast.success("Configurações da loja salvas!");
     } catch (e: unknown) {
@@ -1464,25 +1553,51 @@ function ConfiguracoesLojaForm({ adminKey }: { adminKey: string }) {
 function AdminView() {
   const [waBot,      setWaBot     ] = useState(CONFIG.whatsapp.bot);
   const [waPayment,  setWaPayment ] = useState(CONFIG.whatsapp.payment);
-  // Dois estados separados de propósito: `keyInput` é só o rascunho do que
-  // está sendo digitado (muda a cada tecla, sem efeito colateral nenhum);
-  // `adminKey` é o valor CONFIRMADO, que só muda quando o usuário clica
-  // "Ver painel" (ou aperta Enter) — é `adminKey` que dispara as chamadas
-  // de API (resumo, pedidos, configurações). Antes eram a mesma variável,
-  // e cada tecla digitada disparava as 3 chamadas de novo, todas com 401
-  // até a chave ficar completa.
-  const [keyInput,   setKeyInput  ] = useState(sessionStorage.getItem("jsvcell_admin_key") || "");
-  const [adminKey,   setAdminKey  ] = useState(sessionStorage.getItem("jsvcell_admin_key") || "");
-  const [showKey,    setShowKey   ] = useState(false);
+  // null = ainda checando (chamada em andamento pro backend); só depois
+  // disso responder é que sabemos se mostra o formulário de login ou o
+  // painel — evita um "flash" do formulário de login pra quem já está numa
+  // sessão válida (cookie de até 8h, ver PERMANENT_SESSION_LIFETIME).
+  const [logado,     setLogado    ] = useState<boolean | null>(null);
+  const [usuario,    setUsuario   ] = useState("");
+  const [senha,      setSenha     ] = useState("");
+  const [showSenha,  setShowSenha ] = useState(false);
+  const [entrando,   setEntrando  ] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [syncing,    setSyncing   ] = useState(false);
   const [summary,    setSummary   ] = useState<orderService.OrderSummary | null>(null);
   const [loadError,  setLoadError ] = useState<string | null>(null);
   const [ultimaSync, setUltimaSync] = useState<string | null>(null);
 
-  const confirmarChave = () => {
-    const valor = keyInput.trim();
-    sessionStorage.setItem("jsvcell_admin_key", valor);
-    setAdminKey(valor);
+  useEffect(() => {
+    authService.getSessionStatus()
+      .then(r => setLogado(r.logado))
+      .catch(() => setLogado(false));
+  }, []);
+
+  const handleLogin = async () => {
+    setEntrando(true);
+    setLoginError(null);
+    try {
+      await authService.login(usuario, senha);
+      setLogado(true);
+      setSenha(""); // não deixa a senha parada em memória/DOM depois de usada
+    } catch (e: unknown) {
+      setLoginError(e instanceof Error ? e.message : "Usuário ou senha inválidos");
+    } finally {
+      setEntrando(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // mesmo se a chamada falhar (ex: já expirado), trata como deslogado —
+      // não faz sentido travar o usuário numa sessão que o servidor já não
+      // reconhece mais.
+    }
+    setLogado(false);
+    setSummary(null);
   };
 
   // "Última sincronização com o Bling" — não existe endpoint dedicado pra
@@ -1501,32 +1616,31 @@ function AdminView() {
       .catch(() => {}); // não crítico — se falhar, só não mostra o indicador
   }, []);
 
-  // A chave de admin fica só na sessão do navegador (não em localStorage
-  // permanente) — some ao fechar a aba, é um cuidado extra por ser
-  // credencial de acesso ao painel, mesmo sendo de baixo risco. Persistida
-  // direto em confirmarChave() agora, não mais via efeito a cada tecla.
   useEffect(() => {
-    if (!adminKey) return;
+    if (!logado) return;
     setLoadError(null);
-    orderService.getOrderSummary(adminKey)
+    orderService.getOrderSummary()
       .then(setSummary)
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar resumo"));
-  }, [adminKey]);
+  }, [logado]);
 
   const saveWhatsApp = () => {
     updateConfig({ whatsapp: { bot: waBot, payment: waPayment } });
     toast.success("Números de WhatsApp salvos!");
   };
 
+  // Passa pela sessão do painel (não pela ADMIN_API_KEY) — quem aperta esse
+  // botão é um humano logado no navegador, nunca deveria precisar saber ou
+  // colar a chave de admin pra isso. As rotas /bling/sync e
+  // /bling/sync-estoque em si continuam exigindo ADMIN_API_KEY (usadas pelo
+  // scheduler automático); estas aqui são um proxy autenticado por sessão
+  // que repassa a chamada usando a chave já configurada no servidor — ver
+  // app/blueprints/admin/routes.py.
   const handleSync = async () => {
-    if (!adminKey) {
-      toast.error("Informe a chave de admin primeiro");
-      return;
-    }
     setSyncing(true);
     try {
-      await api.post("/bling/sync", undefined, { "X-Admin-Key": adminKey });
-      await api.post("/bling/sync-estoque", undefined, { "X-Admin-Key": adminKey });
+      await api.post("/api/admin/sincronizar-catalogo", undefined, undefined, "include");
+      await api.post("/api/admin/sincronizar-estoque", undefined, undefined, "include");
       toast.success("Catálogo e estoque sincronizados com o Bling!");
     } catch (e: unknown) {
       mostrarErroAdmin(e, "Erro ao sincronizar");
@@ -1535,48 +1649,76 @@ function AdminView() {
     }
   };
 
+  if (logado !== true) {
+    return (
+      <div className="max-w-sm mx-auto">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-[#0f1e0f] rounded-xl flex items-center justify-center shrink-0">
+            <Settings size={20} className="text-green-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Painel Admin</h2>
+            <p className="text-sm text-gray-500">Faça login para continuar.</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="font-bold text-gray-900 mb-1 text-sm flex items-center gap-2">
+            <Shield size={15} className="text-green-600" /> Login
+          </h3>
+          <p className="text-xs text-gray-400 mb-3">
+            Usuário e senha configurados no servidor (ADMIN_USERNAME/ADMIN_PASSWORD_HASH).
+          </p>
+          <div className="space-y-2">
+            <input value={usuario} onChange={e => setUsuario(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+              placeholder="Usuário"
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500" />
+            <div className="relative">
+              <input type={showSenha ? "text" : "password"}
+                value={senha} onChange={e => setSenha(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+                placeholder="Senha"
+                className="w-full px-3 py-2.5 pr-10 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500" />
+              <button type="button" onClick={() => setShowSenha(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showSenha ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </div>
+          <button onClick={handleLogin} disabled={entrando || !usuario.trim() || !senha}
+            className="mt-3 w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-lg text-sm transition-colors">
+            {entrando ? "Entrando..." : "Entrar"}
+          </button>
+          {loginError && (
+            <p className="mt-2 text-xs text-red-600">{loginError}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-[#0f1e0f] rounded-xl flex items-center justify-center shrink-0">
-          <Settings size={20} className="text-green-400" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#0f1e0f] rounded-xl flex items-center justify-center shrink-0">
+            <Settings size={20} className="text-green-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Painel Admin</h2>
+            <p className="text-sm text-gray-500">Configure WhatsApp e monitore pedidos.</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Painel Admin</h2>
-          <p className="text-sm text-gray-500">Configure WhatsApp e monitore pedidos.</p>
-        </div>
+        <button onClick={handleLogout}
+          className="text-sm text-gray-400 hover:text-red-600 font-semibold transition-colors shrink-0">
+          Sair
+        </button>
       </div>
 
-      {/* Chave de admin — necessária pra ver resumo/pedidos e sincronizar */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-bold text-gray-900 mb-1 text-sm flex items-center gap-2">
-          <Shield size={15} className="text-green-600" /> Chave de acesso ao painel
-        </h3>
-        <p className="text-xs text-gray-400 mb-3">
-          A mesma configurada em ADMIN_API_KEY no servidor. Sem ela, resumo,
-          lista de pedidos e sincronização ficam bloqueados.
-        </p>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input type={showKey ? "text" : "password"}
-              value={keyInput} onChange={e => setKeyInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") confirmarChave(); }}
-              placeholder="Cole aqui a ADMIN_API_KEY do servidor"
-              className="w-full px-3 py-2.5 pr-10 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 font-mono" />
-            <button onClick={() => setShowKey(s => !s)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-          <button onClick={confirmarChave} disabled={!keyInput.trim()}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-4 rounded-lg text-sm shrink-0">
-            Ver painel
-          </button>
-        </div>
-        {loadError && (
-          <p className="mt-2 text-xs text-red-600">{loadError}</p>
-        )}
-      </div>
+      {loadError && (
+        <p className="text-xs text-red-600">{loadError}</p>
+      )}
 
       {/* Stats */}
       {summary && (
@@ -1596,8 +1738,12 @@ function AdminView() {
         </div>
       )}
 
+      {/* Venda Balcão — ao lado de Pedidos, mesmo padrão visual (card
+          branco, mesmas cores) das demais seções deste painel. */}
+      <VendaBalcaoSection />
+
       {/* Lista de pedidos + marcar como pago */}
-      {adminKey && <PedidosAdminSection adminKey={adminKey} />}
+      <PedidosAdminSection />
 
       {/* WhatsApp config */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -1651,7 +1797,7 @@ function AdminView() {
       </div>
 
       {/* Configurações da loja */}
-      {adminKey && <ConfiguracoesLojaForm adminKey={adminKey} />}
+      <ConfiguracoesLojaForm />
 
       {/* Bling — credenciais vivem só no servidor agora */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -1676,7 +1822,7 @@ function AdminView() {
           </p>
         </div>
 
-        <button onClick={handleSync} disabled={syncing || !adminKey}
+        <button onClick={handleSync} disabled={syncing}
           className="flex items-center gap-1.5 px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors text-sm font-semibold">
           <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
           {syncing ? "Sincronizando..." : "Sincronizar catálogo e estoque agora"}
@@ -1693,6 +1839,13 @@ function AdminView() {
   );
 }
 
+// ─── Barra de navegação inferior (mobile) ───────────────────────────────────────
+// Início / Categorias / Carrinho (com badge) / Pedidos foi o pedido original,
+// mas a tela de "Pedidos" (busca por telefone) foi removida na Parte 2 desta
+// MESMA tarefa — não sobrou destino nenhum pra esse 4º item, então fica só
+// com os 3 que continuam existindo. "Categorias" reaproveita exatamente a
+// mesma lógica que já existia no botão de Categorias do header antigo (zerar
+// o filtro pra "all" + navegar pra "/" se necessário), só realocada pra cá.
 // ─── Layout público (catálogo/carrinho/checkout/pedidos) ───────────────────────
 // Fica montado o tempo todo enquanto o visitante navega dentro do site
 // público — só o <Outlet/> troca de página. É aqui que mora o carrinho
@@ -1717,10 +1870,12 @@ function PublicLayout() {
     <div className="min-h-screen bg-[#f1f5f1] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       <Toaster position="bottom-right" richColors closeButton />
 
-      <Header cartCount={count} onMenuClick={() => setMobileMenu(true)}
-        search={search} setSearch={setSearch} setActiveCategory={setActiveCategory} />
+      <Header cartCount={count} onMenuClick={() => setMobileMenu(true)} />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+      {/* pb-20 no mobile abre espaço pras barras fixas de ação (carrinho/
+          checkout) não cobrirem o fim do conteúdo (md:pb-6 volta ao padding
+          original no desktop, onde essas barras nem aparecem). */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 pt-6 pb-20 md:pb-6">
         <Outlet context={context} />
       </main>
 
@@ -1736,9 +1891,6 @@ function PublicLayout() {
           {/* Sem link/botão de Admin aqui de propósito — painel interno só
               é alcançável por quem digita a URL /painel-interno direto. */}
           <div className="flex items-center gap-4 text-xs text-gray-400">
-            <Link to="/meus-pedidos" className="hover:text-green-600 transition-colors flex items-center gap-1">
-              <ClipboardList size={12} /> Meus pedidos
-            </Link>
             <a href={whatsappService.getBotLink()} target="_blank" rel="noreferrer"
               className="hover:text-green-600 transition-colors flex items-center gap-1">
               <MessageCircle size={12} /> WhatsApp
@@ -1804,18 +1956,34 @@ function CheckoutPage() {
   // vezes ou em que ordem os commits acontecem depois disso.
   const pedidoConfirmadoRef = useRef(false);
 
-  const handleConfirmOrder = useCallback(async (customer: Customer) => {
+  const handleConfirmOrder = useCallback(async (customer: Customer, paymentWindow: Window | null) => {
     setSubmitting(true);
     try {
       const order = await orderService.createOrder(items, customer);
       pedidoConfirmadoRef.current = true;
       toast.success(`Pedido ${order.number} criado com sucesso!`, { duration: 3000 });
+      // Mesmo link que a tela de confirmação abria antes num segundo clique
+      // — agora só muda QUANDO ele é aberto (aqui, assim que o pedido é
+      // criado com sucesso), não o link em si nem sua fonte (linkPagamento
+      // do backend, com fallback local). A aba já existia (aberta em
+      // branco no clique original, ver handleSubmit em CheckoutView) — só
+      // navegamos ela pra URL certa agora que a temos.
+      const paymentLink = whatsappService.getPaymentLink(order);
+      if (paymentWindow) {
+        paymentWindow.location.href = paymentLink;
+      } else {
+        // window.open síncrono no clique não retornou uma aba (navegador já
+        // tinha bloqueado ali) — tenta mesmo assim como último recurso,
+        // mas o esperado é isso já ter sido resolvido no clique original.
+        window.open(paymentLink, "_blank");
+      }
       // O pedido criado viaja pela navegação (state da rota), não por um
       // estado global — é assim que se passa dado "de uma tela pra outra"
       // com URLs de verdade, sem precisar de um contexto novo só pra isso.
       navigate("/pedido-confirmado", { state: { order } });
       clear();
     } catch {
+      paymentWindow?.close();
       toast.error("Erro ao confirmar pedido. Tente novamente.");
     } finally {
       setSubmitting(false);
@@ -1848,15 +2016,8 @@ function ConfirmationPage() {
   if (!order) return <Navigate to="/" replace />;
 
   return (
-    <ConfirmationView order={order}
-      onContinue={() => navigate("/")}
-      onViewOrders={() => navigate("/meus-pedidos")} />
+    <ConfirmationView order={order} onContinue={() => navigate("/")} />
   );
-}
-
-function OrdersPage() {
-  const navigate = useNavigate();
-  return <OrdersView onBack={() => navigate("/")} />;
 }
 
 // AdminView por si só não traz <Toaster/> nem o fundo/padding da página —
@@ -1886,7 +2047,6 @@ export default function App() {
           <Route path="carrinho" element={<CartPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
           <Route path="pedido-confirmado" element={<ConfirmationPage />} />
-          <Route path="meus-pedidos" element={<OrdersPage />} />
         </Route>
 
         {/* Painel interno — de propósito FORA do PublicLayout (sem Header/
