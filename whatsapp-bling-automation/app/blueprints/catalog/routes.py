@@ -5,12 +5,21 @@ nunca do Bling em tempo real numa requisição de usuário final.
 """
 from flask import Blueprint, jsonify, request
 
+from app.extensions import cache
 from app.models import Produto
 
 bp = Blueprint("catalog", __name__, url_prefix="/api/produtos")
 
 
 @bp.route("")
+# query_string=True é ESSENCIAL aqui — sem isso, o Flask-Caching usa só o
+# path (request.path) como chave, ignorando ?categoria=/?busca=, e uma
+# busca ou filtro de categoria qualquer passaria a devolver o resultado
+# cacheado de OUTRO filtro (ou do catálogo sem filtro nenhum). Com
+# query_string=True, cada combinação de categoria/busca vira sua própria
+# entrada de cache, e os filtros continuam se comportando exatamente como
+# antes — só passam a ser servidos do cache por até 300s.
+@cache.cached(timeout=300, query_string=True)
 def listar():
     categoria = request.args.get("categoria")
     busca = request.args.get("busca")

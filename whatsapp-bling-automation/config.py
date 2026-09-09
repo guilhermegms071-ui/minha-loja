@@ -33,6 +33,21 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Cache de resposta (Flask-Caching) — hoje só usado em GET /api/produtos
+    # (ver app/blueprints/catalog/routes.py). SimpleCache guarda em memória,
+    # DENTRO DE CADA PROCESSO — em produção o Dockerfile sobe gunicorn com
+    # --workers 2, então os dois processos têm cada um o seu próprio cache,
+    # sem compartilhar nada entre si. cache.clear() (chamado ao fim de
+    # /bling/sync, /bling/sync-estoque e do webhook da Bling) só limpa o
+    # cache do worker que atendeu aquela requisição — o outro worker pode
+    # continuar servindo uma resposta de até CACHE_DEFAULT_TIMEOUT segundos
+    # desatualizada até seu próprio cache expirar sozinho. Fixo em código
+    # (não por .env de propósito — não foi pedido pra ser configurável
+    # ainda); se isso precisar ser consistente entre workers/processos no
+    # futuro, o backend teria que trocar pra Redis (CACHE_TYPE=RedisCache).
+    CACHE_TYPE = "SimpleCache"
+    CACHE_DEFAULT_TIMEOUT = 300
+
     # Bling
     BLING_CLIENT_ID = os.getenv("BLING_CLIENT_ID")
     BLING_CLIENT_SECRET = os.getenv("BLING_CLIENT_SECRET")

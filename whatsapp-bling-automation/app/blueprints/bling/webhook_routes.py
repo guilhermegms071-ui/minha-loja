@@ -51,7 +51,7 @@ import hmac
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.extensions import db
+from app.extensions import cache, db
 from app.models import MensagemProcessada, Produto
 from app.blueprints.bling import client as bling_client
 from app.blueprints.bling.sync_service import upsert_produto
@@ -94,8 +94,16 @@ def webhook():
 
             if recurso_normalizado == "product":
                 _processar_evento_produto(acao, id_recurso)
+                # Este webhook é o mecanismo PRINCIPAL de atualização em
+                # tempo real (o polling /bling/sync* virou rede de
+                # segurança, ver docstring do módulo) — sem limpar o cache
+                # de GET /api/produtos aqui, um produto criado/alterado só
+                # apareceria certo depois de até 300s (o timeout do cache),
+                # o que anularia boa parte do propósito de ter webhook.
+                cache.clear()
             elif recurso_normalizado == "stock":
                 _processar_evento_estoque(id_recurso)
+                cache.clear()  # mesmo motivo acima — estoque também é servido por GET /api/produtos
             elif recurso_normalizado == "virtual_stock":
                 # De propósito ignorado: o app usa estoque FÍSICO como fonte
                 # da verdade (mesmo campo que o polling já usa,

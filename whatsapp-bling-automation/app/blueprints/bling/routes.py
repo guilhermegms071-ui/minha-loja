@@ -9,7 +9,7 @@ import secrets
 
 from flask import Blueprint, current_app, jsonify, redirect, request, session
 
-from app.extensions import db
+from app.extensions import cache, db
 from app.models import BlingToken, Produto
 from app.blueprints.bling import client as bling_client
 from app.blueprints.bling.sync_service import upsert_produto
@@ -103,6 +103,12 @@ def sync():
                 break
             pagina += 1
 
+        # Limpa o cache de GET /api/produtos (ver catalog/routes.py) — sem
+        # isso, o catálogo recém-sincronizado continuaria servindo a
+        # resposta antiga (cacheada por até 300s) até o timeout expirar
+        # sozinho. Só afeta o worker que atendeu esta requisição — ver
+        # comentário sobre múltiplos workers em config.py.
+        cache.clear()
         return jsonify({"status": "ok", "produtos_sincronizados": total_sincronizados})
 
     except bling_client.BlingAPIError as e:
@@ -133,6 +139,10 @@ def sync_estoque():
                 atualizados += 1
 
         db.session.commit()
+        # Mesmo motivo do /sync acima — estoque é servido por GET
+        # /api/produtos (campos inStock/stockQty), então também precisa
+        # invalidar o cache pra não mostrar estoque desatualizado.
+        cache.clear()
         return jsonify({"status": "ok", "produtos_atualizados": atualizados})
 
     except bling_client.BlingAPIError as e:

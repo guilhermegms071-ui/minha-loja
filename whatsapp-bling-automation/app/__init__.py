@@ -5,7 +5,7 @@ from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from config import Config
-from app.extensions import db, migrate
+from app.extensions import db, migrate, cache, compress
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200 per hour"])
 
@@ -17,6 +17,8 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     limiter.init_app(app)
+    cache.init_app(app)
+    compress.init_app(app)
 
     origens = app.config.get("ALLOWED_ORIGINS") or ["*"]
     # /api/admin/* precisa de uma regra CORS separada porque agora usa login
@@ -40,10 +42,15 @@ def create_app(config_class=Config):
     # de /api/pedidos/* (criar pedido e GET detalhe continuam públicos, sem
     # sessão, na regra genérica de sempre).
     _rotas_pedidos_com_sessao = r"pedidos/\d+/(marcar-pago|retentar-bling)"
+    # max_age=86400 (24h) faz o navegador CACHEAR a permissão de CORS depois
+    # do primeiro preflight — sem isso, todo GET/POST cross-origin disparava
+    # um OPTIONS de novo a cada carregamento (era boa parte do tempo de
+    # resposta de GET /api/produtos, por exemplo). Só isso, mesma origem/
+    # credentials de antes em cada bloco.
     CORS(app, resources={
-        r"^/api/admin/.*$": {"origins": origens_admin, "supports_credentials": True},
-        rf"^/api/{_rotas_pedidos_com_sessao}$": {"origins": origens_admin, "supports_credentials": True},
-        rf"^/api/(?!admin/)(?!{_rotas_pedidos_com_sessao}).*$": {"origins": origens},
+        r"^/api/admin/.*$": {"origins": origens_admin, "supports_credentials": True, "max_age": 86400},
+        rf"^/api/{_rotas_pedidos_com_sessao}$": {"origins": origens_admin, "supports_credentials": True, "max_age": 86400},
+        rf"^/api/(?!admin/)(?!{_rotas_pedidos_com_sessao}).*$": {"origins": origens, "max_age": 86400},
     })
 
     _registrar_blueprints(app)
